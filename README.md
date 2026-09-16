@@ -1,37 +1,30 @@
-# Target Locker
+# 🎯 Target Locker
 
-**Pick one object. Follow it through the video.**
+**Select one object. Keep tracking it.**
 
-Single-object tracking (SOT) with SAM2. Select a target on the first frame, then track its segmentation mask and bounding box across subsequent frames—without selecting it again.
+Single-object tracking (**SOT**) powered by SAM2.1 Tiny. Click an object in a video or webcam frame to track its mask and bounding box across subsequent frames—no separate object detector required.
 
-**Click to select · Video input · Mask + box output · Colab GPU**
+## Demos
 
-## Watch the demos
+Click a preview to open the full video.
 
-| Demo | Video |
-| :--- | :--- |
-| 01 | [Watch / download](demos/demo-01.mp4) |
-| 02 | [Watch / download](demos/demo-02.mp4) |
-| 03 | [Watch / download](demos/demo-03.mp4) |
+| Demo 1 | Demo 2 | Demo 3 |
+| :---: | :---: | :---: |
+| [![Demo 1](demos/demo-01.jpg)](demos/demo-01.mp4) | [![Demo 2](demos/demo-02.jpg)](demos/demo-02.mp4) | [![Demo 3](demos/demo-03.jpg)](demos/demo-03.mp4) |
 
-## Try it in Colab
+## How it works
 
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/CptImtiaz/Target_Locker/blob/main/SAM2_Colab_Target_Locker.ipynb)
+1. Open a video or webcam stream.
+2. Click the object you want to follow.
+3. Track that single target with a segmentation mask and bounding box.
+4. Save the tracked video.
 
-1. Select a **GPU runtime** and run the setup cell.
-2. Upload a video, click your target, and confirm.
-3. Run tracking, preview the result, and download the MP4.
+**Mac:** CPU or Apple GPU (MPS). **Colab:** GPU notebook with video upload and download.
 
-The notebook processes **300 frames by default**. Change `MAX_FRAMES` for longer clips. Output videos have no audio.
+Tracking speed depends on hardware. Occlusion and fast motion can cause the target to be lost. Output videos have no audio.
 
-## What is SOT?
+## Built with
 
-**Single-Object Tracking** follows one user-selected object through a sequence—even when other objects are visible. SAM2 supplies the masks; the displayed box is calculated from each mask. No separate object detector is used.
+[SAM2_streaming](https://github.com/khw11044/SAM2_streaming) · [Meta SAM 2](https://github.com/facebookresearch/sam2) · PyTorch · OpenCV
 
-Tracking can drift or lose the target during occlusion or fast motion. Speed depends on the hardware; real-time performance is not guaranteed.
-
-## Credits
-
-Built on [SAM2_streaming](https://github.com/khw11044/SAM2_streaming) and Meta's [SAM 2](https://github.com/facebookresearch/sam2), using the SAM2.1 Tiny checkpoint.
-
-Maintained by [Ahmed Imtiaz](https://github.com/CptImtiaz).
+Based on SAM2_streaming, distributed under Apache 2.0.

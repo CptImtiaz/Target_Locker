@@ -1,0 +1,6 @@
+matplotlib
+opencv-python
+ipython
+hydra-core
+tqdm
+ultralytics
