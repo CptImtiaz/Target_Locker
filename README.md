@@ -10,7 +10,7 @@ Click a preview to open the full video.
 
 | Demo 1 | Demo 2 | Demo 3 |
 | :---: | :---: | :---: |
-| [![Demo 1](demos/demo-01.jpg)](demos/demo-01.mp4) | [![Demo 2](demos/demo-02.jpg)](demos/demo-02.mp4) | [![Demo 3](demos/demo-03.jpg)](demos/demo-03.mp4) |
+| [![Demo 1](demos/demo-01.mp4)](demos/demo-01.mp4) | [![Demo 2](demos/demo-02.mp4)](demos/demo-02.mp4) | [![Demo 3](demos/demo-03.mp4)](demos/demo-03.mp4) |
 
 ## How it works
 
