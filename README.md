@@ -4,60 +4,58 @@
 
 ### Lock one target. Track only that target.
 
-**Persistent Single-Object Tracking (SOT) with SAM2.1 Tiny**
+**Persistent Single-Object Tracking (SOT) using SAM2.1 Tiny**
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-SAM2-EE4C2C?logo=pytorch&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/OpenCV-Tracking-5C3EE8?logo=opencv&logoColor=white)
-![SOT](https://img.shields.io/badge/Task-Single--Object%20Tracking-111827)
+![Task](https://img.shields.io/badge/Task-Single--Object%20Tracking-111827)
 
-Select one object in a video or webcam frame and **Target Locker keeps following that same object** with a segmentation mask and bounding box.
-
-No separate object detector is required after target initialization.
+Select a single object in a video or webcam frame, then keep tracking **that same object only** with a segmentation mask and bounding box.
 
 </div>
 
 ---
 
-## 🎬 Live Demos
+## 🎬 Demo Previews
 
-> The previews below are configured to play muted and loop automatically when supported by GitHub/browser rendering.
+> The GIF previews below are the main focus of this README so visitors can instantly see the tracker in action.
 
 ### Demo 01
-
-<video src="demos/demo-01.mp4" width="100%" autoplay muted loop playsinline controls></video>
+<p align="center">
+  <img src="demos/demo-01.gif" alt="Demo 01" width="900">
+</p>
 
 ### Demo 02
-
-<video src="demos/demo-02.mp4" width="100%" autoplay muted loop playsinline controls></video>
+<p align="center">
+  <img src="demos/demo-02.gif" alt="Demo 02" width="900">
+</p>
 
 ### Demo 03
-
-<video src="demos/demo-03.mp4" width="100%" autoplay muted loop playsinline controls></video>
+<p align="center">
+  <img src="demos/demo-03.gif" alt="Demo 03" width="900">
+</p>
 
 <details>
-<summary><b>Fallback previews</b></summary>
+<summary><b>Full MP4 videos</b></summary>
 <br>
 
-| Demo 01 | Demo 02 | Demo 03 |
-| :---: | :---: | :---: |
-| <img src="demos/demo-01.jpg" width="260"> | <img src="demos/demo-02.jpg" width="260"> | <img src="demos/demo-03.jpg" width="260"> |
+- [Demo 01 video](demos/demo-01.mp4)
+- [Demo 02 video](demos/demo-02.mp4)
+- [Demo 03 video](demos/demo-03.mp4)
 
 </details>
 
 ---
 
-## ✨ What It Does
+## ✨ Highlights
 
-| Feature | Description |
-|---|---|
-| 🎯 **Target Lock** | Select one object manually |
-| 🧠 **SAM2.1 Tiny** | Segmentation-based target propagation |
-| 📦 **Single Target Only** | Tracks the selected object instead of every object |
-| 🟩 **Mask + Box** | Visualizes segmentation mask and bounding box |
-| 🎥 **Video Input** | Process uploaded videos |
-| 📷 **Webcam Input** | Supports live camera tracking |
-| 💾 **Video Export** | Save the tracked result |
+- 🎯 **Target Locking** — manually select one object
+- 🧠 **SAM2.1 Tiny** — efficient mask-based tracking
+- 🟩 **Mask + Bounding Box** — clear visualization of the tracked target
+- 🎥 **Video or Webcam Input** — works on recorded or live input
+- 💾 **Save Output** — export processed tracking videos
+- ⚡ **No separate detector after initialization**
 
 ---
 
@@ -66,53 +64,50 @@ No separate object detector is required after target initialization.
 ```text
 Video / Webcam
       ↓
-Select one target
+Click target once
       ↓
 Initialize SAM2
       ↓
-Propagate target mask
+Propagate target mask across frames
       ↓
-Track the same object frame-by-frame
+Track the same target only
       ↓
-Mask + Bounding Box
+Display mask + box
       ↓
-Export tracked video
+Save tracked result
 ```
 
 ---
 
-## 🚀 Workflow
+## 🚀 Quick Workflow
 
-1. Open a **video** or **webcam** stream.
+1. Open a video or webcam stream.
 2. Click the object you want to lock.
-3. SAM2 initializes that target from your selection.
-4. The tracker follows the same target across subsequent frames.
-5. The result is displayed with a **segmentation mask + bounding box**.
-6. Save the processed video.
+3. The tracker initializes that target.
+4. It follows the same object over the next frames.
+5. The output is shown with a segmentation mask and bounding box.
+6. Save the tracked video.
 
 ---
 
-## 💻 Runtime
+## 💻 Runtime Notes
 
-**macOS**  
-CPU or Apple Silicon GPU through **MPS**.
+**macOS**: CPU or Apple GPU via **MPS**  
+**Colab**: GPU notebook with video upload/download support
 
-**Google Colab**  
-GPU runtime with video upload, processing, preview, and download.
-
-> Tracking speed depends on the available hardware, input resolution, and video length.
+> Tracking speed depends on hardware, input resolution, and video length.
 
 ---
 
-## ⚠️ Current Limitations
+## ⚠️ Limitations
 
-Target tracking may become less stable during:
+Tracking quality may drop during:
 
 - heavy occlusion
-- very fast target motion
-- major appearance changes
+- very fast motion
+- large appearance changes
 - target leaving the frame
-- difficult low-contrast scenes
+- low-contrast or difficult scenes
 
 Output videos currently contain **no audio**.
 
@@ -121,7 +116,7 @@ Output videos currently contain **no audio**.
 ## 🧰 Built With
 
 - [SAM2_streaming](https://github.com/khw11044/SAM2_streaming)
-- [Meta Segment Anything 2](https://github.com/facebookresearch/sam2)
+- [Meta SAM 2](https://github.com/facebookresearch/sam2)
 - PyTorch
 - OpenCV
 - Python
@@ -130,16 +125,4 @@ Output videos currently contain **no audio**.
 
 ## 🙏 Acknowledgement
 
-This project is based on **SAM2_streaming** and Meta's **SAM 2** research/codebase.
-
-SAM2_streaming is distributed under the **Apache 2.0 License**.
-
----
-
-<div align="center">
-
-### 🎯 Select → Lock → Track
-
-**Target Locker — Persistent Single-Object Tracking**
-
-</div>
+This project is based on **SAM2_streaming** and Meta's **SAM 2**.
