@@ -36,16 +36,6 @@ Select a single object in a video or webcam frame, then keep tracking **that sam
   <img src="demos/demo-03.gif" alt="Demo 03" width="900">
 </p>
 
-<details>
-<summary><b>Full MP4 videos</b></summary>
-<br>
-
-- [Demo 01 video](demos/demo-01.mp4)
-- [Demo 02 video](demos/demo-02.mp4)
-- [Demo 03 video](demos/demo-03.mp4)
-
-</details>
-
 ---
 
 ## ✨ Highlights
