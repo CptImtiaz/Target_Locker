@@ -31,7 +31,7 @@ display(Javascript(r"""
 
   const root = document.createElement("div");
   root.id = "tl-app-model2";
-  root.innerHTML = \`
+  root.innerHTML = `
   <style>
     #tl-app-model2{max-width:1050px;margin:14px auto;color:#e8f7ff;font-family:Inter,system-ui,Arial,sans-serif}
     #tl-app-model2 *{box-sizing:border-box}
@@ -113,7 +113,7 @@ display(Javascript(r"""
       </div>
       <div id="progress" class="progress"><div id="bar"></div></div>
     </div>
-  </div>\`;
+  </div>`;
 
   document.body.appendChild(root);
   const q = s => root.querySelector(s);
