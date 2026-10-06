@@ -79,7 +79,7 @@ For formal research evaluation with ground truth, use:
 - `evaluation.py` — multi-run comparison log and ranking helper
 - `requirements.txt` — dependencies
 
-TherA model assets come from `Imtiaz807/ThermalConversion`. The bundled TherA-compatible runtime remains in `proposed_model_2/thera_runtime.py`.
+TherA model assets come from `Imtiaz807/ThermalConversion`. Model 3 includes its own bundled TherA-compatible runtime in `proposed_model_3/thera_runtime.py`.
 
 ## Recommended experiment
 
