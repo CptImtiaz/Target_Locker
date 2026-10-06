@@ -245,6 +245,7 @@ def track_with_memory_tree(
     predictor = None
     previous_area = None
     initial_area = 1
+    initial_bbox_area = 1
     last_center = None
     confidence_values = []
     center_jumps = []
@@ -275,6 +276,8 @@ def track_with_memory_tree(
                 )
 
             initial_area = max(1, int(mask.sum()))
+            bx1, by1, bx2, by2 = bbox
+            initial_bbox_area = max(1, (bx2 - bx1) * (by2 - by1))
             previous_area = initial_area
             tree.update_locked(frames[0], bbox)
 
@@ -293,6 +296,26 @@ def track_with_memory_tree(
 
                 good, area = mask_quality(mask, confidence, previous_area, initial_area)
                 bbox = bbox_from_mask(mask) if good else None
+
+                # Strong drift gate: SAM2 can stay confident while slowly expanding
+                # onto background. Reject those masks before they contaminate memory.
+                if good and bbox is not None:
+                    x1, y1, x2, y2 = bbox
+                    bbox_area = max(1, (x2 - x1) * (y2 - y1))
+                    frame_area = max(1, w * h)
+                    area_ratio_from_start = bbox_area / float(initial_bbox_area)
+                    frame_fraction = bbox_area / float(frame_area)
+                    appearance_score = tree.reference_similarity(frame, bbox)
+
+                    drifted = (
+                        area_ratio_from_start > 12.0
+                        or frame_fraction > 0.18
+                        or appearance_score < 0.18
+                    )
+
+                    if drifted:
+                        good = False
+                        bbox = None
 
                 if good and bbox is not None:
                     if not was_locked:
@@ -322,16 +345,25 @@ def track_with_memory_tree(
                         bbox2 = bbox_from_mask(mask2) if good2 else None
 
                         if good2 and bbox2 is not None:
-                            mask = mask2
-                            confidence = confidence2
-                            area = area2
-                            bbox = bbox2
-                            was_locked = True
-                            reacquired = True
-                            confirmed_reacquisitions += 1
-                            previous_area = area2
-                            confidence_values.append(confidence2)
-                            tree.update_locked(frame, bbox2)
+                            x1, y1, x2, y2 = bbox2
+                            bbox2_area = max(1, (x2 - x1) * (y2 - y1))
+                            appearance2 = tree.reference_similarity(frame, bbox2)
+
+                            if (
+                                bbox2_area / float(initial_bbox_area) <= 12.0
+                                and bbox2_area / float(max(1, w * h)) <= 0.18
+                                and appearance2 >= 0.18
+                            ):
+                                mask = mask2
+                                confidence = confidence2
+                                area = area2
+                                bbox = bbox2
+                                was_locked = True
+                                reacquired = True
+                                confirmed_reacquisitions += 1
+                                previous_area = area2
+                                confidence_values.append(confidence2)
+                                tree.update_locked(frame, bbox2)
 
                 result = frame.copy()
 
