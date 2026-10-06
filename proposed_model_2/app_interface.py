@@ -16,7 +16,7 @@ from thermal_sam2_tracker import (
 )
 
 REPO = Path("/content/Target_Locker")
-THERA = Path("/content/TherA")
+THERA_RUNTIME = REPO / "proposed_model_2" / "thera_runtime.py"\nTHERA_WEIGHTS = Path("/content/thera_weights")
 SAM_WORKDIR = REPO / "SAM2_streaming-main"
 SAM_CKPT = Path("/content/sam2.1_hiera_tiny.pt")
 
@@ -232,7 +232,8 @@ output.eval_js(f"""(() => {{
 }})()""")
 
 run_thera(
-    THERA,
+    THERA_RUNTIME,
+    THERA_WEIGHTS,
     rgb_dir,
     thermal_dir,
     palette=THERA_PALETTE,
