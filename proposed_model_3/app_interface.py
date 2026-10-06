@@ -11,20 +11,14 @@ from evaluation import append_comparison, rank_runs
 
 from model3_tracker import (
     extract_rgb_frames,
-    run_thera,
-    frames_to_video,
     first_frame,
     track_with_reacquisition,
 )
 
 REPO = Path("/content/Target_Locker")
-THERA_RUNTIME = REPO / "proposed_model_3" / "thera_runtime.py"
-THERA_WEIGHTS = Path("/content/thera_weights")
 SAM_WORKDIR = REPO / "SAM2_streaming-main"
 SAM_CKPT = Path("/content/sam2.1_hiera_tiny.pt")
 
-THERA_STEPS = 8
-THERA_PALETTE = "SUNNY"
 MAX_SIDE = 768
 
 display(Javascript(r"""
@@ -81,7 +75,7 @@ display(Javascript(r"""
       <div>
         <div class="kicker">PROPOSED MODEL 3 // THERMAL RE-ACQUISITION LAB</div>
         <div class="title">THERMAL TARGET LOCK + RECOVERY</div>
-        <div class="sub">TherA → SAM2 → lock-loss detection → selectable re-acquisition → evaluation.</div>
+        <div class="sub">RGB → SAM2 → lock-loss detection → selectable re-acquisition → evaluation.</div>
       </div>
       <div id="chip" class="chip">SYSTEM READY</div>
     </div>
@@ -108,12 +102,6 @@ display(Javascript(r"""
 
       <div class="controls">
         <button id="newVideo" class="btn" style="display:none">NEW VIDEO</button>
-        <select id="palette" class="selectbox">
-          <option value="SUNNY">Sunny</option>
-          <option value="CLOUDY">Cloudy</option>
-          <option value="RAINY">Rainy</option>
-          <option value="NIGHT">Night</option>
-        </select>
         <select id="algorithm" class="selectbox">
           <option value="adaptive_zoom">Adaptive Zoom</option>
           <option value="trajectory_tube">Trajectory Tube</option>
@@ -122,12 +110,6 @@ display(Javascript(r"""
           <option value="temporal_voting">Temporal Voting</option>
           <option value="multi_hypothesis_backward">Multi-Hypothesis + Backward</option>
           <option value="auto_ensemble" selected>Auto Ensemble</option>
-        </select>
-        <select id="steps" class="selectbox">
-          <option value="5">5 steps</option>
-          <option value="8" selected>8 steps</option>
-          <option value="12">12 steps</option>
-          <option value="20">20 steps</option>
         </select>
         <button id="select" class="btn" disabled>SELECT TARGET</button>
         <button id="track" class="btn primary" disabled>LOCK & TRACK</button>
@@ -161,7 +143,7 @@ display(Javascript(r"""
     root, file:q("#file"), upload:q("#upload"), newVideo:q("#newVideo"),
     empty:q("#empty"), video:q("#video"), canvas:q("#canvas"), ctx:q("#canvas").getContext("2d"),
     scan:q("#scan"), reticle:q("#reticle"), overlay:q("#overlay"), otitle:q("#otitle"), osub:q("#osub"),
-    palette:q("#palette"), algorithm:q("#algorithm"), steps:q("#steps"), select:q("#select"), track:q("#track"), chip:q("#chip"), info:q("#info"),
+    algorithm:q("#algorithm"), select:q("#select"), track:q("#track"), chip:q("#chip"), info:q("#info"),
     telemetry:q("#telemetry"), progress:q("#progress"), bar:q("#bar"),
     res:q("#res"), fps:q("#fps"), frames:q("#frames"), metrics3:q("#metrics3"), metricNote:q("#metricNote"), mRetention:q("#mRetention"), mLoss:q("#mLoss"), mRecovery:q("#mRecovery"), mLatency:q("#mLatency"), mConfidence:q("#mConfidence"), mJump:q("#mJump"), mTrackFps:q("#mTrackFps"), mAlgorithm:q("#mAlgorithm"), selectedFile:null, target:null
   };
@@ -191,7 +173,7 @@ file_meta = output.eval_js(r"""
   A.info.textContent = f.name.toUpperCase();
   A.progress.style.display = "block";
   A.bar.style.width = "2%";
-  return {name:f.name,size:f.size,type:f.type || "video/mp4",palette:A.palette.value,algorithm:A.algorithm.value,steps:parseInt(A.steps.value)};
+  return {name:f.name,size:f.size,type:f.type || "video/mp4",algorithm:A.algorithm.value};
 })()
 """)
 
@@ -200,16 +182,12 @@ if not file_meta:
 
 name = file_meta["name"]
 size = int(file_meta["size"])
-THERA_PALETTE = str(file_meta.get("palette","SUNNY")).upper()
 REACQ_ALGORITHM = str(file_meta.get("algorithm","auto_ensemble"))
-THERA_STEPS = int(file_meta.get("steps",8))
 suffix = Path(name).suffix or ".mp4"
 
 job = Path(tempfile.mkdtemp(prefix="thermal-target-locker-", dir="/content"))
 video_path = job / f"input{suffix}"
 rgb_dir = job / "rgb_frames"
-thermal_dir = job / "thermal_frames"
-thermal_video = job / "thermal.mp4"
 final_video = job / f"model3_{REACQ_ALGORITHM}.mp4"
 metrics_json = job / f"metrics_{REACQ_ALGORITHM}.json"
 metrics_csv = job / f"metrics_{REACQ_ALGORITHM}.csv"
@@ -270,25 +248,15 @@ output.eval_js(f"""(() => {{
   A.frames.textContent={json.dumps(str(meta["frames"]))};
   A.telemetry.style.display="grid";
   A.bar.style.width="25%";
-  A.otitle.textContent="THERA RGB → THERMAL";
-  A.osub.textContent={json.dumps(f"Condition: {THERA_PALETTE} • TherA steps: {THERA_STEPS} • Recovery: {REACQ_ALGORITHM}")};
-  A.chip.textContent="THERMAL CONVERSION";
+  A.otitle.textContent="RGB TARGET LOCKER READY";
+  A.osub.textContent={json.dumps(f"Recovery: {REACQ_ALGORITHM}")};
+  A.chip.textContent="RGB READY";
   return true;
 }})()""")
 
-run_thera(
-    THERA_RUNTIME,
-    THERA_WEIGHTS,
-    rgb_dir,
-    thermal_dir,
-    palette=THERA_PALETTE,
-    steps=THERA_STEPS,
-)
+rgb0 = first_frame(rgb_dir)
 
-frames_to_video(thermal_dir, thermal_video, meta["fps"])
-thermal0 = first_frame(thermal_dir)
-
-ok, buf = cv2.imencode(".jpg", thermal0, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+ok, buf = cv2.imencode(".jpg", rgb0, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
 if not ok:
     raise RuntimeError("Could not encode first thermal frame.")
 img_url = "data:image/jpeg;base64," + base64.b64encode(buf).decode("ascii")
@@ -306,8 +274,8 @@ output.eval_js(f"""(async () => {{
   A.overlay.style.display="none";
   A.progress.style.display="none";
   A.select.disabled=false;
-  A.chip.textContent="THERMAL VIDEO READY";
-  A.info.textContent="THERMAL FRAME 1 // SELECT TARGET";
+  A.chip.textContent="RGB VIDEO READY";
+  A.info.textContent="RGB FRAME 1 // SELECT TARGET";
   A.bar.style.width="65%";
   return true;
 }})()""")
@@ -321,7 +289,7 @@ selection = output.eval_js(r"""
   A.select.textContent="CLICK OBJECT";
   A.scan.style.display="block";
   A.chip.textContent="TARGET ACQUISITION";
-  A.info.textContent="CLICK THE TARGET ON THERMAL FRAME 1";
+  A.info.textContent="CLICK THE TARGET ON RGB FRAME 1";
 
   const click = await new Promise(resolve => {
     A.canvas.onclick = ev => {
@@ -360,11 +328,11 @@ selection = output.eval_js(r"""
 })()
 """)
 
-tx = int(float(selection["x"]) * thermal0.shape[1] / max(float(selection["cw"]), 1))
-ty = int(float(selection["y"]) * thermal0.shape[0] / max(float(selection["ch"]), 1))
+tx = int(float(selection["x"]) * rgb0.shape[1] / max(float(selection["cw"]), 1))
+ty = int(float(selection["y"]) * rgb0.shape[0] / max(float(selection["ch"]), 1))
 
 final_video, model3_metrics = track_with_reacquisition(
-    thermal_dir,
+    rgb_dir,
     (tx, ty),
     meta["fps"],
     final_video,
@@ -380,8 +348,8 @@ final_video, model3_metrics = track_with_reacquisition(
 comparison_csv = append_comparison(
     model3_metrics,
     "/content/model3_results",
-    THERA_PALETTE,
-    THERA_STEPS,
+    "RGB",
+    0,
 )
 comparison_ranking = rank_runs(comparison_csv)
 
@@ -414,7 +382,7 @@ if final_video.stat().st_size <= 100 * 1024 * 1024:
       A.overlay.style.display="none";
       A.progress.style.display="none";
       A.chip.textContent="TRACK COMPLETE";
-      A.info.textContent="SYNTHETIC THERMAL TARGET-LOCKED RESULT";
+      A.info.textContent="RGB TARGET-LOCKED RESULT";
       A.video.play().catch(()=>{{}});
       return true;
     }})()""")
@@ -429,7 +397,6 @@ else:
     })()""")
 
 print("✅ Proposed Model 3 complete")
-print("Thermal video:", thermal_video)
 print("Tracked output:", final_video)
 
 print("Comparison CSV:", comparison_csv)
