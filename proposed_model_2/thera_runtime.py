@@ -34,12 +34,13 @@ class GEGLU(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim_in: int, dim_hidden: int, dim_out: int, dropout: float = 0.1):
+    def __init__(self, dim_in: int, dim_out: int, mult: int = 4, dropout: float = 0.1):
         super().__init__()
+        inner = int(dim_in * mult)
         self.net = nn.Sequential(
-            GEGLU(dim_in, dim_hidden),
+            GEGLU(dim_in, inner),
             nn.Dropout(dropout),
-            nn.Linear(dim_hidden, dim_out),
+            nn.Linear(inner, dim_out),
         )
 
     def forward(self, x):
@@ -51,9 +52,9 @@ class TextAdapter(ModelMixin, ConfigMixin):
     def __init__(self, in_dim: int, int_dim: int, out_dim: int):
         super().__init__()
         self.norm1 = nn.LayerNorm(in_dim)
-        self.ff1 = FeedForward(in_dim, int_dim, int_dim)
+        self.ff1 = FeedForward(in_dim, int_dim)
         self.norm2 = nn.LayerNorm(int_dim)
-        self.ff2 = FeedForward(int_dim, out_dim, out_dim)
+        self.ff2 = FeedForward(int_dim, out_dim)
 
     def forward(self, x):
         x = self.ff1(self.norm1(x))
