@@ -57,7 +57,7 @@ display(Javascript(r"""
     .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:13px}
     .btn{border-radius:11px;padding:10px 15px;font-weight:900;cursor:pointer;border:1px solid #334155;background:#111827;color:#cbd5e1}
     .btn.primary{border-color:#fb923c;background:linear-gradient(135deg,#ea580c,#dc2626);color:white}
-    .btn:disabled{opacity:.35;cursor:not-allowed}
+    .btn:disabled{opacity:.35;cursor:not-allowed}\n    .selectbox{border-radius:11px;padding:10px 12px;font-weight:800;border:1px solid #334155;background:#111827;color:#e2e8f0}
     .info{margin-left:auto;font-family:monospace;color:#64748b;font-size:11px}
     .telemetry{margin-top:13px;display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
     .card{background:#07111f;border:1px solid rgba(251,146,60,.10);border-radius:12px;padding:10px 12px}
@@ -121,7 +121,7 @@ display(Javascript(r"""
     root, file:q("#file"), upload:q("#upload"), newVideo:q("#newVideo"),
     empty:q("#empty"), video:q("#video"), canvas:q("#canvas"), ctx:q("#canvas").getContext("2d"),
     scan:q("#scan"), reticle:q("#reticle"), overlay:q("#overlay"), otitle:q("#otitle"), osub:q("#osub"),
-    select:q("#select"), track:q("#track"), chip:q("#chip"), info:q("#info"),
+    palette:q("#palette"), select:q("#select"), track:q("#track"), chip:q("#chip"), info:q("#info"),
     telemetry:q("#telemetry"), progress:q("#progress"), bar:q("#bar"),
     res:q("#res"), fps:q("#fps"), frames:q("#frames"), selectedFile:null, target:null
   };
@@ -151,7 +151,7 @@ file_meta = output.eval_js(r"""
   A.info.textContent = f.name.toUpperCase();
   A.progress.style.display = "block";
   A.bar.style.width = "2%";
-  return {name:f.name,size:f.size,type:f.type || "video/mp4"};
+  return {name:f.name,size:f.size,type:f.type || "video/mp4",palette:A.palette.value};
 })()
 """)
 
