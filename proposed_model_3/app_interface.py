@@ -14,7 +14,6 @@ from model3_tracker import (
 )
 
 REPO = Path("/content/Target_Locker")
-SAM_WORKDIR = REPO / "SAM2_streaming-main"
 SAM_CKPT = Path("/content/sam2.1_hiera_tiny.pt")
 
 MAX_SIDE = 768
@@ -178,7 +177,6 @@ video_path = job / f"input{suffix}"
 rgb_dir = job / "rgb_frames"
 final_video = job / "model3_memory_recovery.mp4"
 metrics_json = job / "metrics_memory_recovery.json"
-metrics_csv = job / "metrics_memory_recovery.csv"
 
 CHUNK = 512 * 1024
 chunks = (size + CHUNK - 1) // CHUNK
@@ -316,8 +314,11 @@ selection = output.eval_js(r"""
 })()
 """)
 
-tx = int(float(selection["x"]) * rgb0.shape[1] / max(float(selection["cw"]), 1))
-ty = int(float(selection["y"]) * rgb0.shape[0] / max(float(selection["ch"]), 1))
+tx_preview = int(float(selection["x"]) * rgb0.shape[1] / max(float(selection["cw"]), 1))
+ty_preview = int(float(selection["y"]) * rgb0.shape[0] / max(float(selection["ch"]), 1))
+
+tx = int(tx_preview * meta["source_width"] / max(rgb0.shape[1], 1))
+ty = int(ty_preview * meta["source_height"] / max(rgb0.shape[0], 1))
 
 final_video, model3_metrics = run_samurai(
     video_path=video_path,
