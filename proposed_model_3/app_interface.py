@@ -65,7 +65,11 @@ display(Javascript(r"""
     .card{background:#07111f;border:1px solid rgba(251,146,60,.10);border-radius:12px;padding:10px 12px}
     .card span{display:block;color:#475569;font-size:9px;letter-spacing:1.6px}.card b{display:block;margin-top:4px;color:#fff7ed;font-size:13px}
     .progress{display:none;margin-top:13px;background:#07111f;border-radius:999px;height:8px;overflow:hidden}
-    .progress>div{width:0;height:100%;background:linear-gradient(90deg,#fb923c,#ef4444);transition:width .2s ease}\n    .metrics3{display:none;margin-top:14px;grid-template-columns:repeat(4,1fr);gap:9px}\n    .metric3{background:#07111f;border:1px solid rgba(103,232,249,.14);border-radius:12px;padding:10px 12px}\n    .metric3 span{display:block;color:#64748b;font-size:9px;letter-spacing:1.2px}.metric3 b{display:block;color:#e0f2fe;margin-top:4px;font-size:14px}\n    .metric-note{display:none;color:#64748b;font-size:10px;margin-top:8px}
+    .progress>div{width:0;height:100%;background:linear-gradient(90deg,#fb923c,#ef4444);transition:width .2s ease}
+    .metrics3{display:none;margin-top:14px;grid-template-columns:repeat(4,1fr);gap:9px}
+    .metric3{background:#07111f;border:1px solid rgba(103,232,249,.14);border-radius:12px;padding:10px 12px}
+    .metric3 span{display:block;color:#64748b;font-size:9px;letter-spacing:1.2px}.metric3 b{display:block;color:#e0f2fe;margin-top:4px;font-size:14px}
+    .metric-note{display:none;color:#64748b;font-size:10px;margin-top:8px}
     @keyframes spin{to{transform:rotate(360deg)}} @keyframes scan{from{top:-8%}to{top:100%}}
     @media(max-width:760px){.telemetry{grid-template-columns:repeat(2,1fr)}.info{width:100%;margin-left:0}}
   </style>
@@ -194,7 +198,9 @@ if not file_meta:
 
 name = file_meta["name"]
 size = int(file_meta["size"])
-THERA_PALETTE = str(file_meta.get("palette","SUNNY")).upper()\nREACQ_ALGORITHM = str(file_meta.get("algorithm","auto_ensemble"))\nTHERA_STEPS = int(file_meta.get("steps",8))
+THERA_PALETTE = str(file_meta.get("palette","SUNNY")).upper()
+REACQ_ALGORITHM = str(file_meta.get("algorithm","auto_ensemble"))
+THERA_STEPS = int(file_meta.get("steps",8))
 suffix = Path(name).suffix or ".mp4"
 
 job = Path(tempfile.mkdtemp(prefix="thermal-target-locker-", dir="/content"))
@@ -202,7 +208,9 @@ video_path = job / f"input{suffix}"
 rgb_dir = job / "rgb_frames"
 thermal_dir = job / "thermal_frames"
 thermal_video = job / "thermal.mp4"
-final_video = job / f"model3_{REACQ_ALGORITHM}.mp4"\nmetrics_json = job / f"metrics_{REACQ_ALGORITHM}.json"\nmetrics_csv = job / f"metrics_{REACQ_ALGORITHM}.csv"
+final_video = job / f"model3_{REACQ_ALGORITHM}.mp4"
+metrics_json = job / f"metrics_{REACQ_ALGORITHM}.json"
+metrics_csv = job / f"metrics_{REACQ_ALGORITHM}.csv"
 
 CHUNK = 512 * 1024
 chunks = (size + CHUNK - 1) // CHUNK
