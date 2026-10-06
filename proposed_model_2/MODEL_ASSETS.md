@@ -23,7 +23,7 @@ thera_weights/
 ├── stable-diffusion/
 │   ├── vae/
 │   └── scheduler/
-└── reference_caches/
+└── palettes/
     ├── SUNNY.pt
     ├── CLOUDY.pt
     ├── RAINY.pt
