@@ -175,9 +175,9 @@ suffix = Path(name).suffix or ".mp4"
 job = Path(tempfile.mkdtemp(prefix="model3-memory-tree-", dir="/content"))
 video_path = job / f"input{suffix}"
 rgb_dir = job / "rgb_frames"
-final_video = job / "model3_memory_tree.mp4"
-metrics_json = job / "metrics_memory_tree.json"
-metrics_csv = job / "metrics_memory_tree.csv"
+final_video = job / "model3_global_reacquisition.mp4"
+metrics_json = job / "metrics_global_reacquisition.json"
+metrics_csv = job / "metrics_global_reacquisition.csv"
 
 CHUNK = 512 * 1024
 chunks = (size + CHUNK - 1) // CHUNK
