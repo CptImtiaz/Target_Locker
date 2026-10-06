@@ -96,7 +96,24 @@ def run_thera(runtime_script, weights_dir, rgb_frames_dir, thermal_frames_dir, p
         "--num-steps", str(int(steps)),
         "--device", "cuda",
     ]
-    subprocess.run(cmd, cwd=str(runtime_script.parent), check=True)
+    proc = subprocess.run(
+        cmd,
+        cwd=str(runtime_script.parent),
+        text=True,
+        capture_output=True,
+    )
+
+    if proc.stdout:
+        print(proc.stdout)
+
+    if proc.returncode != 0:
+        if proc.stderr:
+            print(proc.stderr)
+        raise RuntimeError(
+            "TherA conversion failed.\n"
+            f"Command: {' '.join(cmd)}\n\n"
+            f"STDERR:\n{proc.stderr or '(no stderr)'}"
+        )
 
     produced = sorted(thermal_frames_dir.glob("frame_*.png"))
     expected = sorted(rgb_frames_dir.glob("frame_*.png"))
