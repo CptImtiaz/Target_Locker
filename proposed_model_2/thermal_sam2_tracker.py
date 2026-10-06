@@ -66,9 +66,10 @@ def extract_rgb_frames(video_path, frames_dir, max_side=768, progress: ProgressC
     }
 
 
-def run_thera(thera_dir, rgb_frames_dir, thermal_frames_dir, palette="SUNNY", steps=20):
-    """Run official TherA RGB->TIR in a child process, then release its GPU memory."""
-    thera_dir = Path(thera_dir)
+def run_thera(runtime_script, weights_dir, rgb_frames_dir, thermal_frames_dir, palette="SUNNY", steps=20):
+    """Run the Target_Locker bundled TherA-compatible runtime in a child process."""
+    runtime_script = Path(runtime_script)
+    weights_dir = Path(weights_dir)
     rgb_frames_dir = Path(rgb_frames_dir)
     thermal_frames_dir = Path(thermal_frames_dir)
 
@@ -76,20 +77,26 @@ def run_thera(thera_dir, rgb_frames_dir, thermal_frames_dir, palette="SUNNY", st
         shutil.rmtree(thermal_frames_dir)
     thermal_frames_dir.mkdir(parents=True, exist_ok=True)
 
-    cache = thera_dir / "weights" / "reference_caches" / f"{palette.upper()}.pt"
+    cache = weights_dir / "reference_caches" / f"{palette.upper()}.pt"
     if not cache.exists():
-        raise FileNotFoundError(f"TherA reference cache not found: {cache}")
+        raise FileNotFoundError(
+            f"TherA reference cache not found: {cache}. "
+            "Expected one of SUNNY.pt, CLOUDY.pt, RAINY.pt, NIGHT.pt."
+        )
+
+    if not runtime_script.exists():
+        raise FileNotFoundError(f"Bundled TherA runtime not found: {runtime_script}")
 
     cmd = [
-        sys.executable, str(thera_dir / "infer_custom.py"),
+        sys.executable, str(runtime_script),
+        "--weights-dir", str(weights_dir),
         "--rgb-dir", str(rgb_frames_dir),
         "--output-dir", str(thermal_frames_dir),
         "--reference-cache", str(cache),
         "--num-steps", str(int(steps)),
-        "--batch-size", "1",
         "--device", "cuda",
     ]
-    subprocess.run(cmd, cwd=str(thera_dir), check=True)
+    subprocess.run(cmd, cwd=str(runtime_script.parent), check=True)
 
     produced = sorted(thermal_frames_dir.glob("frame_*.png"))
     expected = sorted(rgb_frames_dir.glob("frame_*.png"))
