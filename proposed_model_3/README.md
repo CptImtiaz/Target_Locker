@@ -1,58 +1,83 @@
-# Proposed Model 3 — Rolling Target Memory Recovery
+# Proposed Model 3 — SAMURAI Motion-Aware Long-Term Tracker
 
-Model 3 uses one recovery strategy only.
+Model 3 now uses the **official SAMURAI tracker** instead of custom template-search or re-acquisition logic.
 
 ## Pipeline
 
 ```
 RGB video
 ↓
-Select target on frame 1
+Click target on frame 1
 ↓
-SAM2 tracking
+Point prompt is mapped back to original video resolution
 ↓
-While lock is healthy:
-    save target crop from the tracking box
-    keep recent target appearances in memory
+Official SAMURAI
+  ├─ SAM2.1 segmentation
+  ├─ motion-aware memory selection
+  ├─ object/mask quality gating
+  └─ long-term tracking
 ↓
-Lock lost?
-├── No  → keep tracking + update memory
-└── Yes → search the whole frame using saved target memories
-          ↓
-       best matching target candidate
-          ↓
-       re-initialize SAM2
-          ↓
-       continue tracking
+Tracked output video
+↓
+No-GT diagnostics
 ```
 
-## Recovery idea
+## Why SAMURAI
 
-The model stores:
-- the original target crop as an anchor
-- recent target crops from healthy tracked frames
-- multiple target scales
+Vanilla SAM2 can drift when incorrect masks are written into memory. SAMURAI modifies SAM2 for visual object tracking with motion-aware memory selection so unreliable observations are less likely to contaminate long-term memory.
 
-After lock loss, it compares the current frame against those stored target memories at several scales. Multiple stored memories vote for the same location, which helps reduce false re-locks.
+The implementation used here comes from the official repository:
 
-## Evaluation
+`https://github.com/yangchris11/samurai`
 
-Every run reports:
-- Lock retention %
-- Lock-loss events
-- Re-acquisition attempts
-- Successful re-acquisitions
-- Re-acquisition success %
-- Mean recovery latency
-- Mean SAM confidence
+Model 3 runs SAMURAI in an isolated subprocess so its modified SAM2 package does not conflict with the SAM2 copy already included in Target_Locker.
+
+## User workflow
+
+1. Run `App Interface.ipynb`.
+2. Upload an RGB video.
+3. Click **SELECT TARGET**.
+4. Click one point on the target in the first frame.
+5. Press **LOCK & TRACK**.
+6. SAMURAI tracks the selected object through the original-resolution video.
+
+No ground-truth file is required.
+
+## Diagnostics
+
+Without ground truth, Model 3 does **not** report tracking accuracy.
+
+The app shows only diagnostics:
+
+- Mask presence %
+- Frames with mask
+- Zero-mask frames
+- Mean bounding-box area
 - Mean normalized center jump
 - Tracking FPS
 
-These are proxy metrics. Formal SOT evaluation should still use ground-truth Success/AUC, Precision and Normalized Precision.
+These are useful for debugging and comparing runtime behavior, but they are **not** Success AUC, Precision, Normalized Precision, or other true SOT accuracy metrics.
 
 ## Files
 
 - `App Interface.ipynb` — Colab setup and launcher
-- `app_interface.py` — upload/select/track UI
-- `model3_tracker.py` — SAM2 tracking, rolling memory bank, loss detection and re-lock
-- `requirements.txt` — runtime dependencies
+- `app_interface.py` — upload / click / tracking UI
+- `model3_tracker.py` — isolated SAMURAI launcher
+- `samurai_runtime.py` — official SAMURAI inference wrapper
+- `requirements.txt` — Target_Locker runtime dependencies
+
+## External runtime dependency
+
+The notebook clones:
+
+```
+https://github.com/yangchris11/samurai.git
+```
+
+to:
+
+```
+/content/samurai
+```
+
+and installs its modified SAM2 package before running Model 3.
