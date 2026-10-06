@@ -18,7 +18,7 @@ from model3_tracker import (
 )
 
 REPO = Path("/content/Target_Locker")
-THERA_RUNTIME = REPO / "proposed_model_2" / "thera_runtime.py"
+THERA_RUNTIME = REPO / "proposed_model_3" / "thera_runtime.py"
 THERA_WEIGHTS = Path("/content/thera_weights")
 SAM_WORKDIR = REPO / "SAM2_streaming-main"
 SAM_CKPT = Path("/content/sam2.1_hiera_tiny.pt")
