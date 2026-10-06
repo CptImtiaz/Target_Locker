@@ -67,8 +67,12 @@ class TherAAdapter(nn.Module):
         super().__init__()
         self.adapter = TextAdapter.from_pretrained(str(adapter_dir))
 
+        # TherA checkpoints include a scalar "scale" entry in llava_adapter.
+        # Register it so the checkpoint state_dict loads exactly.
+        self.register_buffer("scale", torch.tensor(1.0))
+
     def forward(self, hidden):
-        return self.adapter(hidden).sample
+        return self.adapter(hidden).sample * self.scale
 
 
 def convert_unet_to_8ch(unet: UNet2DConditionModel) -> UNet2DConditionModel:
