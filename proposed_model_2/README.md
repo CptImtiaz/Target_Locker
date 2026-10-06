@@ -52,7 +52,7 @@ Expected TherA model layout:
 ├── stable-diffusion/
 │   ├── vae/
 │   └── scheduler/
-└── reference_caches/
+└── palettes/
     ├── SUNNY.pt
     ├── CLOUDY.pt
     ├── RAINY.pt
