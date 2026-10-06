@@ -7,6 +7,8 @@ import cv2
 from google.colab import output
 from IPython.display import display, Javascript
 
+from evaluation import append_comparison, rank_runs
+
 from model3_tracker import (
     extract_rgb_frames,
     run_thera,
@@ -375,6 +377,14 @@ final_video, model3_metrics = track_with_reacquisition(
     progress=update_progress,
 )
 
+comparison_csv = append_comparison(
+    model3_metrics,
+    "/content/model3_results",
+    THERA_PALETTE,
+    THERA_STEPS,
+)
+comparison_ranking = rank_runs(comparison_csv)
+
 output.eval_js(f"""(() => {{
   const A=window.TL2;
   A.metrics3.style.display="grid";
@@ -421,3 +431,14 @@ else:
 print("✅ Proposed Model 3 complete")
 print("Thermal video:", thermal_video)
 print("Tracked output:", final_video)
+
+print("Comparison CSV:", comparison_csv)
+if comparison_ranking:
+    print("\nCurrent Model 3 ranking:")
+    for rank, row in enumerate(comparison_ranking[:10], 1):
+        print(
+            f'{rank}. {row["algorithm"]} | score={row["comparison_score"]} | '
+            f'lock={row["lock_retention_percent"]}% | '
+            f'recovery={row["reacquisition_success_percent"]}% | '
+            f'latency={row["mean_reacquisition_latency_frames"]} frames'
+        )
