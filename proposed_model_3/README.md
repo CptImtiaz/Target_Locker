@@ -1,6 +1,6 @@
-# Proposed Model 3 — SAMURAI Motion-Aware Long-Term Tracker
+# Proposed Model 3 — SAM2 Memory Tree Re-acquisition
 
-Model 3 now uses the **official SAMURAI tracker** instead of custom template-search or re-acquisition logic.
+This version is self-contained inside Target_Locker. It does not use SAMURAI.
 
 ## Pipeline
 
@@ -9,75 +9,61 @@ RGB video
 ↓
 Click target on frame 1
 ↓
-Point prompt is mapped back to original video resolution
+SAM2.1 Tiny tracking
 ↓
-Official SAMURAI
-  ├─ SAM2.1 segmentation
-  ├─ motion-aware memory selection
-  ├─ object/mask quality gating
-  └─ long-term tracking
+Check mask quality
 ↓
-Tracked output video
-↓
-No-GT diagnostics
+Lock healthy?
+├── Yes → keep tracking and store reliable target appearance
+└── No  → start Memory Tree Search
+             ↓
+        generate several candidate target locations
+             ↓
+        create multiple branches
+             ↓
+        score each branch using:
+          - appearance similarity
+          - motion continuity
+          - target-size consistency
+          - cumulative path score
+             ↓
+        prune weak branches
+             ↓
+        keep top hypotheses across frames
+             ↓
+        stable strong branch confirmed?
+             ├── No  → continue tree search
+             └── Yes → re-prompt SAM2 at that candidate
+                         ↓
+                      continue tracking
 ```
 
-## Why SAMURAI
+## Memory Tree
 
-Vanilla SAM2 can drift when incorrect masks are written into memory. SAMURAI modifies SAM2 for visual object tracking with motion-aware memory selection so unreliable observations are less likely to contaminate long-term memory.
+`memory_tree.py` implements an independent SAM2Long-inspired beam-search memory tree.
 
-The implementation used here comes from the official repository:
+It does not copy SAM2Long source code. It adapts the general idea of maintaining multiple hypotheses instead of immediately committing to one candidate.
 
-`https://github.com/yangchris11/samurai`
+The tree keeps up to five active branches. During target loss, each branch receives a cumulative score based on appearance, motion continuity and size consistency. A candidate must remain stable across multiple lost frames before it is allowed to reinitialize SAM2.
 
-Model 3 runs SAMURAI in an isolated subprocess so its modified SAM2 package does not conflict with the SAM2 copy already included in Target_Locker.
+## No-GT diagnostics
 
-## User workflow
+The app reports only diagnostics:
 
-1. Run `App Interface.ipynb`.
-2. Upload an RGB video.
-3. Click **SELECT TARGET**.
-4. Click one point on the target in the first frame.
-5. Press **LOCK & TRACK**.
-6. SAMURAI tracks the selected object through the original-resolution video.
+- loss events
+- memory-tree search frames
+- confirmed re-acquisitions
+- mean best tree score
+- mean SAM confidence on locked frames
+- normalized center jump
+- tracking FPS
 
-No ground-truth file is required.
-
-## Diagnostics
-
-Without ground truth, Model 3 does **not** report tracking accuracy.
-
-The app shows only diagnostics:
-
-- Mask presence %
-- Frames with mask
-- Zero-mask frames
-- Mean bounding-box area
-- Mean normalized center jump
-- Tracking FPS
-
-These are useful for debugging and comparing runtime behavior, but they are **not** Success AUC, Precision, Normalized Precision, or other true SOT accuracy metrics.
+These are not tracking-accuracy metrics because no ground truth is used.
 
 ## Files
 
-- `App Interface.ipynb` — Colab setup and launcher
-- `app_interface.py` — upload / click / tracking UI
-- `model3_tracker.py` — isolated SAMURAI launcher
-- `samurai_runtime.py` — official SAMURAI inference wrapper
-- `requirements.txt` — Target_Locker runtime dependencies
-
-## External runtime dependency
-
-The notebook clones:
-
-```
-https://github.com/yangchris11/samurai.git
-```
-
-to:
-
-```
-/content/samurai
-```
-
-and installs its modified SAM2 package before running Model 3.
+- `App Interface.ipynb` — Colab setup
+- `app_interface.py` — upload / click / output UI
+- `model3_tracker.py` — SAM2 tracking + loss detection + tree re-lock
+- `memory_tree.py` — multi-hypothesis memory-tree search
+- `requirements.txt` — dependencies
