@@ -7,8 +7,6 @@ import cv2
 from google.colab import output
 from IPython.display import display, Javascript
 
-from evaluation import append_comparison, rank_runs
-
 from model3_tracker import (
     extract_rgb_frames,
     first_frame,
@@ -73,9 +71,9 @@ display(Javascript(r"""
   <div class="shell">
     <div class="head">
       <div>
-        <div class="kicker">PROPOSED MODEL 3 // THERMAL RE-ACQUISITION LAB</div>
-        <div class="title">THERMAL TARGET LOCK + RECOVERY</div>
-        <div class="sub">RGB → SAM2 → lock-loss detection → selectable re-acquisition → evaluation.</div>
+        <div class="kicker">PROPOSED MODEL 3 // ROLLING TARGET MEMORY</div>
+        <div class="title">RGB TARGET LOCK + MEMORY RECOVERY</div>
+        <div class="sub">RGB → SAM2 tracking → save target memory while locked → search saved target after loss.</div>
       </div>
       <div id="chip" class="chip">SYSTEM READY</div>
     </div>
@@ -86,7 +84,7 @@ display(Javascript(r"""
         <div id="empty" class="empty">
           <div style="font-size:46px">◉</div>
           <div style="font-size:18px;font-weight:900;color:#cbd5e1">LOAD RGB VIDEO</div>
-          <div>Every frame is converted by TherA before target selection.</div>
+          <div>Select one target. Model 3 continuously remembers its appearance while lock is healthy.</div>
           <button id="upload" class="upload">UPLOAD RGB VIDEO</button>
         </div>
         <video id="video" controls playsinline style="display:none"></video>
@@ -102,15 +100,6 @@ display(Javascript(r"""
 
       <div class="controls">
         <button id="newVideo" class="btn" style="display:none">NEW VIDEO</button>
-        <select id="algorithm" class="selectbox">
-          <option value="adaptive_zoom">Adaptive Zoom</option>
-          <option value="trajectory_tube">Trajectory Tube</option>
-          <option value="dual_resolution">Dual Resolution</option>
-          <option value="thermal_fingerprint">Thermal Fingerprint</option>
-          <option value="temporal_voting">Temporal Voting</option>
-          <option value="multi_hypothesis_backward">Multi-Hypothesis + Backward</option>
-          <option value="auto_ensemble" selected>Auto Ensemble</option>
-        </select>
         <button id="select" class="btn" disabled>SELECT TARGET</button>
         <button id="track" class="btn primary" disabled>LOCK & TRACK</button>
         <div id="info" class="info">NO VIDEO LOADED</div>
@@ -131,9 +120,9 @@ display(Javascript(r"""
         <div class="metric3"><span>MEAN CONFIDENCE</span><b id="mConfidence">—</b></div>
         <div class="metric3"><span>CENTER JUMP</span><b id="mJump">—</b></div>
         <div class="metric3"><span>TRACKING FPS</span><b id="mTrackFps">—</b></div>
-        <div class="metric3"><span>ALGORITHM</span><b id="mAlgorithm">—</b></div>
+        <div class="metric3"><span>RECOVERY METHOD</span><b id="mAlgorithm">Rolling Memory</b></div>
       </div>
-      <div id="metricNote" class="metric-note">No-GT proxy metrics for comparing recovery behavior. Use dataset ground truth for AUC/precision.</div>
+      <div id="metricNote" class="metric-note">Proxy metrics show lock continuity and recovery behavior. Use dataset ground truth for formal AUC/precision.</div>
     </div>
   </div>`;
 
@@ -143,7 +132,7 @@ display(Javascript(r"""
     root, file:q("#file"), upload:q("#upload"), newVideo:q("#newVideo"),
     empty:q("#empty"), video:q("#video"), canvas:q("#canvas"), ctx:q("#canvas").getContext("2d"),
     scan:q("#scan"), reticle:q("#reticle"), overlay:q("#overlay"), otitle:q("#otitle"), osub:q("#osub"),
-    algorithm:q("#algorithm"), select:q("#select"), track:q("#track"), chip:q("#chip"), info:q("#info"),
+    select:q("#select"), track:q("#track"), chip:q("#chip"), info:q("#info"),
     telemetry:q("#telemetry"), progress:q("#progress"), bar:q("#bar"),
     res:q("#res"), fps:q("#fps"), frames:q("#frames"), metrics3:q("#metrics3"), metricNote:q("#metricNote"), mRetention:q("#mRetention"), mLoss:q("#mLoss"), mRecovery:q("#mRecovery"), mLatency:q("#mLatency"), mConfidence:q("#mConfidence"), mJump:q("#mJump"), mTrackFps:q("#mTrackFps"), mAlgorithm:q("#mAlgorithm"), selectedFile:null, target:null
   };
@@ -168,12 +157,12 @@ file_meta = output.eval_js(r"""
   A.newVideo.style.display = "inline-block";
   A.overlay.style.display = "flex";
   A.otitle.textContent = "UPLOADING RGB VIDEO";
-  A.osub.textContent = "Preparing RGB frames for TherA…";
+  A.osub.textContent = "Preparing RGB frames…";
   A.chip.textContent = "RGB INPUT";
   A.info.textContent = f.name.toUpperCase();
   A.progress.style.display = "block";
   A.bar.style.width = "2%";
-  return {name:f.name,size:f.size,type:f.type || "video/mp4",algorithm:A.algorithm.value};
+  return {name:f.name,size:f.size,type:f.type || "video/mp4"};
 })()
 """)
 
@@ -182,15 +171,14 @@ if not file_meta:
 
 name = file_meta["name"]
 size = int(file_meta["size"])
-REACQ_ALGORITHM = str(file_meta.get("algorithm","auto_ensemble"))
 suffix = Path(name).suffix or ".mp4"
 
-job = Path(tempfile.mkdtemp(prefix="thermal-target-locker-", dir="/content"))
+job = Path(tempfile.mkdtemp(prefix="model3-memory-locker-", dir="/content"))
 video_path = job / f"input{suffix}"
 rgb_dir = job / "rgb_frames"
-final_video = job / f"model3_{REACQ_ALGORITHM}.mp4"
-metrics_json = job / f"metrics_{REACQ_ALGORITHM}.json"
-metrics_csv = job / f"metrics_{REACQ_ALGORITHM}.csv"
+final_video = job / "model3_memory_recovery.mp4"
+metrics_json = job / "metrics_memory_recovery.json"
+metrics_csv = job / "metrics_memory_recovery.csv"
 
 CHUNK = 512 * 1024
 chunks = (size + CHUNK - 1) // CHUNK
@@ -227,7 +215,7 @@ def update_progress(stage, done, total):
         sub = f"Frame {done} / {total}"
     else:
         bar = 68 + int(pct * 0.28)
-        title = "TRACKING THERMAL TARGET"
+        title = "TRACKING + SAVING TARGET MEMORY"
         sub = f"Frame {done} / {total}"
 
     output.eval_js(f"""(() => {{
@@ -249,7 +237,7 @@ output.eval_js(f"""(() => {{
   A.telemetry.style.display="grid";
   A.bar.style.width="25%";
   A.otitle.textContent="RGB TARGET LOCKER READY";
-  A.osub.textContent={json.dumps(f"Recovery: {REACQ_ALGORITHM}")};
+  A.osub.textContent="Rolling target memory is ready.";
   A.chip.textContent="RGB READY";
   return true;
 }})()""")
@@ -258,7 +246,7 @@ rgb0 = first_frame(rgb_dir)
 
 ok, buf = cv2.imencode(".jpg", rgb0, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
 if not ok:
-    raise RuntimeError("Could not encode first thermal frame.")
+    raise RuntimeError("Could not encode first RGB frame.")
 img_url = "data:image/jpeg;base64," + base64.b64encode(buf).decode("ascii")
 
 output.eval_js(f"""(async () => {{
@@ -320,7 +308,7 @@ selection = output.eval_js(r"""
   A.overlay.style.display="flex";
   A.progress.style.display="block";
   A.otitle.textContent="MODEL 3 TRACKING + RECOVERY";
-  A.osub.textContent="Tracking, detecting lock loss, and running the selected re-acquisition method…";
+  A.osub.textContent="Saving target appearance while locked; searching saved memories if lock is lost…";
   A.chip.textContent="TRACKING";
   A.bar.style.width="68%";
 
@@ -340,18 +328,9 @@ final_video, model3_metrics = track_with_reacquisition(
     metrics_csv,
     SAM_WORKDIR,
     SAM_CKPT,
-    algorithm=REACQ_ALGORITHM,
     max_side=960,
     progress=update_progress,
 )
-
-comparison_csv = append_comparison(
-    model3_metrics,
-    "/content/model3_results",
-    "RGB",
-    0,
-)
-comparison_ranking = rank_runs(comparison_csv)
 
 output.eval_js(f"""(() => {{
   const A=window.TL2;
@@ -364,7 +343,7 @@ output.eval_js(f"""(() => {{
   A.mConfidence.textContent={json.dumps(str(model3_metrics["mean_sam_confidence"]))};
   A.mJump.textContent={json.dumps(str(model3_metrics["mean_normalized_center_jump"]))};
   A.mTrackFps.textContent={json.dumps(str(model3_metrics["tracking_fps"]))};
-  A.mAlgorithm.textContent={json.dumps(model3_metrics["algorithm"])};
+  A.mAlgorithm.textContent="Rolling Target Memory";
   return true;
 }})()""")
 
@@ -398,14 +377,3 @@ else:
 
 print("✅ Proposed Model 3 complete")
 print("Tracked output:", final_video)
-
-print("Comparison CSV:", comparison_csv)
-if comparison_ranking:
-    print("\nCurrent Model 3 ranking:")
-    for rank, row in enumerate(comparison_ranking[:10], 1):
-        print(
-            f'{rank}. {row["algorithm"]} | score={row["comparison_score"]} | '
-            f'lock={row["lock_retention_percent"]}% | '
-            f'recovery={row["reacquisition_success_percent"]}% | '
-            f'latency={row["mean_reacquisition_latency_frames"]} frames'
-        )
