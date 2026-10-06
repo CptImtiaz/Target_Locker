@@ -120,6 +120,51 @@ class MemoryTreeReacquirer:
 
         self.reset_search()
 
+
+    def reference_similarity(self, frame: np.ndarray, bbox: BBox) -> float:
+        """Compare a proposed locked box against trusted target memories."""
+        patch = crop(frame, bbox)
+        if patch is None:
+            return 0.0
+
+        refs = []
+        if self.anchor is not None:
+            refs.append(self.anchor)
+        refs.extend(self.memories[-6:])
+
+        if not refs:
+            return 1.0
+
+        target = gray_norm(patch)
+        scores = []
+
+        for ref in refs:
+            ref_g = gray_norm(ref)
+
+            # Compare at a common size so slow scale changes do not look like drift.
+            size = (48, 48)
+            a = cv2.resize(target, size, interpolation=cv2.INTER_AREA)
+            b = cv2.resize(ref_g, size, interpolation=cv2.INTER_AREA)
+
+            a = a.astype(np.float32)
+            b = b.astype(np.float32)
+            a -= a.mean()
+            b -= b.mean()
+
+            denom = float(np.linalg.norm(a) * np.linalg.norm(b))
+            if denom <= 1e-6:
+                continue
+
+            score = float(np.clip((a * b).sum() / denom, -1.0, 1.0))
+            scores.append(score)
+
+        if not scores:
+            return 0.0
+
+        # Trust the best few reliable memories rather than a single old template.
+        scores.sort(reverse=True)
+        return float(np.mean(scores[: min(3, len(scores))]))
+
     def _predicted_center(self) -> Optional[Point]:
         if not self.locked_centers:
             return None
