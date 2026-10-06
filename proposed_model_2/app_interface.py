@@ -16,7 +16,8 @@ from thermal_sam2_tracker import (
 )
 
 REPO = Path("/content/Target_Locker")
-THERA_RUNTIME = REPO / "proposed_model_2" / "thera_runtime.py"\nTHERA_WEIGHTS = Path("/content/thera_weights")
+THERA_RUNTIME = REPO / "proposed_model_2" / "thera_runtime.py"
+THERA_WEIGHTS = Path("/content/thera_weights")
 SAM_WORKDIR = REPO / "SAM2_streaming-main"
 SAM_CKPT = Path("/content/sam2.1_hiera_tiny.pt")
 
@@ -57,7 +58,8 @@ display(Javascript(r"""
     .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:13px}
     .btn{border-radius:11px;padding:10px 15px;font-weight:900;cursor:pointer;border:1px solid #334155;background:#111827;color:#cbd5e1}
     .btn.primary{border-color:#fb923c;background:linear-gradient(135deg,#ea580c,#dc2626);color:white}
-    .btn:disabled{opacity:.35;cursor:not-allowed}\n    .selectbox{border-radius:11px;padding:10px 12px;font-weight:800;border:1px solid #334155;background:#111827;color:#e2e8f0}
+    .btn:disabled{opacity:.35;cursor:not-allowed}
+    .selectbox{border-radius:11px;padding:10px 12px;font-weight:800;border:1px solid #334155;background:#111827;color:#e2e8f0}
     .info{margin-left:auto;font-family:monospace;color:#64748b;font-size:11px}
     .telemetry{margin-top:13px;display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
     .card{background:#07111f;border:1px solid rgba(251,146,60,.10);border-radius:12px;padding:10px 12px}
@@ -100,6 +102,12 @@ display(Javascript(r"""
 
       <div class="controls">
         <button id="newVideo" class="btn" style="display:none">NEW VIDEO</button>
+        <select id="palette" class="selectbox">
+          <option value="SUNNY">Sunny</option>
+          <option value="CLOUDY">Cloudy</option>
+          <option value="RAINY">Rainy</option>
+          <option value="NIGHT">Night</option>
+        </select>
         <button id="select" class="btn" disabled>SELECT TARGET</button>
         <button id="track" class="btn primary" disabled>LOCK & TRACK</button>
         <div id="info" class="info">NO VIDEO LOADED</div>
@@ -160,6 +168,7 @@ if not file_meta:
 
 name = file_meta["name"]
 size = int(file_meta["size"])
+THERA_PALETTE = str(file_meta.get("palette","SUNNY")).upper()
 suffix = Path(name).suffix or ".mp4"
 
 job = Path(tempfile.mkdtemp(prefix="thermal-target-locker-", dir="/content"))
