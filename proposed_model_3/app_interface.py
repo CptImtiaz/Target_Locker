@@ -65,7 +65,7 @@ display(Javascript(r"""
     .card{background:#07111f;border:1px solid rgba(251,146,60,.10);border-radius:12px;padding:10px 12px}
     .card span{display:block;color:#475569;font-size:9px;letter-spacing:1.6px}.card b{display:block;margin-top:4px;color:#fff7ed;font-size:13px}
     .progress{display:none;margin-top:13px;background:#07111f;border-radius:999px;height:8px;overflow:hidden}
-    .progress>div{width:0;height:100%;background:linear-gradient(90deg,#fb923c,#ef4444);transition:width .2s ease}
+    .progress>div{width:0;height:100%;background:linear-gradient(90deg,#fb923c,#ef4444);transition:width .2s ease}\n    .metrics3{display:none;margin-top:14px;grid-template-columns:repeat(4,1fr);gap:9px}\n    .metric3{background:#07111f;border:1px solid rgba(103,232,249,.14);border-radius:12px;padding:10px 12px}\n    .metric3 span{display:block;color:#64748b;font-size:9px;letter-spacing:1.2px}.metric3 b{display:block;color:#e0f2fe;margin-top:4px;font-size:14px}\n    .metric-note{display:none;color:#64748b;font-size:10px;margin-top:8px}
     @keyframes spin{to{transform:rotate(360deg)}} @keyframes scan{from{top:-8%}to{top:100%}}
     @media(max-width:760px){.telemetry{grid-template-columns:repeat(2,1fr)}.info{width:100%;margin-left:0}}
   </style>
@@ -108,6 +108,21 @@ display(Javascript(r"""
           <option value="RAINY">Rainy</option>
           <option value="NIGHT">Night</option>
         </select>
+        <select id="algorithm" class="selectbox">
+          <option value="adaptive_zoom">Adaptive Zoom</option>
+          <option value="trajectory_tube">Trajectory Tube</option>
+          <option value="dual_resolution">Dual Resolution</option>
+          <option value="thermal_fingerprint">Thermal Fingerprint</option>
+          <option value="temporal_voting">Temporal Voting</option>
+          <option value="multi_hypothesis_backward">Multi-Hypothesis + Backward</option>
+          <option value="auto_ensemble" selected>Auto Ensemble</option>
+        </select>
+        <select id="steps" class="selectbox">
+          <option value="5">5 steps</option>
+          <option value="8" selected>8 steps</option>
+          <option value="12">12 steps</option>
+          <option value="20">20 steps</option>
+        </select>
         <button id="select" class="btn" disabled>SELECT TARGET</button>
         <button id="track" class="btn primary" disabled>LOCK & TRACK</button>
         <div id="info" class="info">NO VIDEO LOADED</div>
@@ -120,6 +135,17 @@ display(Javascript(r"""
         <div class="card"><span>PIPELINE</span><b>THERA → SAM2</b></div>
       </div>
       <div id="progress" class="progress"><div id="bar"></div></div>
+      <div id="metrics3" class="metrics3">
+        <div class="metric3"><span>LOCK RETENTION</span><b id="mRetention">—</b></div>
+        <div class="metric3"><span>LOSS EVENTS</span><b id="mLoss">—</b></div>
+        <div class="metric3"><span>RE-ACQ SUCCESS</span><b id="mRecovery">—</b></div>
+        <div class="metric3"><span>RECOVERY LATENCY</span><b id="mLatency">—</b></div>
+        <div class="metric3"><span>MEAN CONFIDENCE</span><b id="mConfidence">—</b></div>
+        <div class="metric3"><span>CENTER JUMP</span><b id="mJump">—</b></div>
+        <div class="metric3"><span>TRACKING FPS</span><b id="mTrackFps">—</b></div>
+        <div class="metric3"><span>ALGORITHM</span><b id="mAlgorithm">—</b></div>
+      </div>
+      <div id="metricNote" class="metric-note">No-GT proxy metrics for comparing recovery behavior. Use dataset ground truth for AUC/precision.</div>
     </div>
   </div>`;
 
@@ -131,7 +157,7 @@ display(Javascript(r"""
     scan:q("#scan"), reticle:q("#reticle"), overlay:q("#overlay"), otitle:q("#otitle"), osub:q("#osub"),
     palette:q("#palette"), algorithm:q("#algorithm"), steps:q("#steps"), select:q("#select"), track:q("#track"), chip:q("#chip"), info:q("#info"),
     telemetry:q("#telemetry"), progress:q("#progress"), bar:q("#bar"),
-    res:q("#res"), fps:q("#fps"), frames:q("#frames"), selectedFile:null, target:null
+    res:q("#res"), fps:q("#fps"), frames:q("#frames"), metrics3:q("#metrics3"), metricNote:q("#metricNote"), mRetention:q("#mRetention"), mLoss:q("#mLoss"), mRecovery:q("#mRecovery"), mLatency:q("#mLatency"), mConfidence:q("#mConfidence"), mJump:q("#mJump"), mTrackFps:q("#mTrackFps"), mAlgorithm:q("#mAlgorithm"), selectedFile:null, target:null
   };
   TL2.upload.onclick = () => TL2.file.click();
   TL2.newVideo.onclick = () => TL2.file.click();
@@ -315,8 +341,8 @@ selection = output.eval_js(r"""
   A.select.disabled=true;
   A.overlay.style.display="flex";
   A.progress.style.display="block";
-  A.otitle.textContent="SAM2 THERMAL TRACKING";
-  A.osub.textContent="Propagating the selected target through all synthetic thermal frames…";
+  A.otitle.textContent="MODEL 3 TRACKING + RECOVERY";
+  A.osub.textContent="Tracking, detecting lock loss, and running the selected re-acquisition method…";
   A.chip.textContent="TRACKING";
   A.bar.style.width="68%";
 
@@ -340,6 +366,21 @@ final_video, model3_metrics = track_with_reacquisition(
     max_side=960,
     progress=update_progress,
 )
+
+output.eval_js(f"""(() => {{
+  const A=window.TL2;
+  A.metrics3.style.display="grid";
+  A.metricNote.style.display="block";
+  A.mRetention.textContent={json.dumps(str(model3_metrics["lock_retention_percent"]) + "%")};
+  A.mLoss.textContent={json.dumps(str(model3_metrics["loss_events"]))};
+  A.mRecovery.textContent={json.dumps(str(model3_metrics["reacquisition_success_percent"]) + "%")};
+  A.mLatency.textContent={json.dumps(str(model3_metrics["mean_reacquisition_latency_frames"]) + " frames")};
+  A.mConfidence.textContent={json.dumps(str(model3_metrics["mean_sam_confidence"]))};
+  A.mJump.textContent={json.dumps(str(model3_metrics["mean_normalized_center_jump"]))};
+  A.mTrackFps.textContent={json.dumps(str(model3_metrics["tracking_fps"]))};
+  A.mAlgorithm.textContent={json.dumps(model3_metrics["algorithm"])};
+  return true;
+}})()""")
 
 if final_video.stat().st_size <= 100 * 1024 * 1024:
     data_url = "data:video/mp4;base64," + base64.b64encode(final_video.read_bytes()).decode("ascii")
@@ -369,6 +410,6 @@ else:
       return true;
     })()""")
 
-print("✅ Proposed Model 2 complete")
+print("✅ Proposed Model 3 complete")
 print("Thermal video:", thermal_video)
 print("Tracked output:", final_video)
