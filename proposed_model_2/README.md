@@ -9,7 +9,7 @@ RGB video
 ↓
 extract all RGB frames
 ↓
-TherA RGB → synthetic TIR conversion
+bundled TherA-compatible RGB → synthetic TIR runtime
 ↓
 thermal_frames/frame_000000.png ...
 ↓
@@ -28,28 +28,56 @@ output_thermal_tracking.mp4
 
 ## Files
 
-- `App Interface.ipynb` — Colab app with the same upload/select/lock/result workflow.
-- `thermal_sam2_tracker.py` — frame extraction, TherA batch inference wrapper, thermal-video creation, and SAM2 thermal tracking.
-- `requirements.txt` — lightweight Target Locker dependencies. The notebook additionally installs TherA's official requirements.
+- `App Interface.ipynb` — Colab app with upload/select/lock/result workflow.
+- `thera_runtime.py` — Target_Locker-owned TherA-compatible inference runtime.
+- `thermal_sam2_tracker.py` — frame extraction, thermal conversion runner, video creation, and SAM2 tracking.
+- `app_interface.py` — Model 2 interface.
+- `MODEL_ASSETS.md` — exact model/config assets required for inference.
+- `requirements.txt` — complete runtime dependencies.
 
-## TherA mode
+## External dependency policy
 
-The notebook uses the official TherA repository and **reference-cache inference** (default `SUNNY.pt`) so LLaVA does not need to stay loaded at runtime.
+The app **does not clone the TherA GitHub repository** anymore.
 
-TherA runs in a child process and exits before SAM2 loads. This is deliberate to release GPU memory between RGB→TIR conversion and tracking.
+Only the trained TherA model assets are fetched from Hugging Face because the neural-network binaries are too large to store as normal GitHub files. GitHub blocks ordinary files larger than 100 MiB.
 
-Default notebook settings:
-- TherA sampling steps: 20 (raise toward the official default 100 for quality)
+Expected TherA model layout:
+
+```
+/content/thera_weights/
+├── checkpoint/model.pt
+├── merged_models/
+│   ├── unet/
+│   └── adapter/
+├── stable-diffusion/
+│   ├── vae/
+│   └── scheduler/
+└── reference_caches/
+    ├── SUNNY.pt
+    ├── CLOUDY.pt
+    ├── RAINY.pt
+    └── NIGHT.pt
+```
+
+The setup notebook downloads all available documented condition caches.
+
+## Runtime behavior
+
+TherA conversion runs in a child Python process and exits before SAM2 loads. This releases GPU memory between RGB→TIR conversion and target tracking.
+
+Default settings:
+
+- TherA sampling steps: 20
 - Max RGB frame side: 768
 - SAM2.1 Tiny for tracking
-- Thermal palette/reference cache: SUNNY
+- Default reference condition: `SUNNY`
 
 ## Important
 
-TherA produces **synthetic thermal infrared imagery** from RGB. It does not recover true radiometric temperature and does not replace a real thermal sensor for temperature measurement.
+TherA output is **synthetic thermal infrared imagery** generated from RGB. It is not radiometric temperature measurement and does not replace a real thermal sensor when actual temperature values are required.
 
 ## Run
 
-Open `App Interface.ipynb` in Google Colab, choose a GPU runtime, run the setup cell, then run the app cell.
+Open `App Interface.ipynb` in Google Colab, select a GPU runtime, run the setup cell, then run the app cell.
 
-Upload RGB video → wait for full thermal conversion → click the object on thermal frame 1 → press **LOCK & TRACK**.
+Upload RGB video → full thermal conversion → click target on thermal frame 1 → **LOCK & TRACK**.
