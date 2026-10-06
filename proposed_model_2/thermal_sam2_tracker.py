@@ -77,11 +77,11 @@ def run_thera(runtime_script, weights_dir, rgb_frames_dir, thermal_frames_dir, p
         shutil.rmtree(thermal_frames_dir)
     thermal_frames_dir.mkdir(parents=True, exist_ok=True)
 
-    cache = weights_dir / "reference_caches" / f"{palette.upper()}.pt"
+    cache = weights_dir / "palettes" / f"{palette.upper()}.pt"
     if not cache.exists():
         raise FileNotFoundError(
             f"TherA reference cache not found: {cache}. "
-            "Expected one of SUNNY.pt, CLOUDY.pt, RAINY.pt, NIGHT.pt."
+            "Expected one of palettes/SUNNY.pt, palettes/CLOUDY.pt, palettes/RAINY.pt, palettes/NIGHT.pt."
         )
 
     if not runtime_script.exists():
