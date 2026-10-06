@@ -14,10 +14,140 @@ import cv2
 import numpy as np
 import torch
 
-from reacquisition_engine import ReacquisitionEngine, bbox_center
 
 
 ProgressCB = Optional[Callable[[str, int, int], None]]
+
+
+def bbox_center(bbox):
+    x1, y1, x2, y2 = bbox
+    return int((x1 + x2) / 2), int((y1 + y2) / 2)
+
+
+class TargetMemoryBank:
+    """Rolling memory of the target appearance while lock is healthy."""
+
+    def __init__(self, max_memories: int = 20):
+        self.max_memories = max(4, int(max_memories))
+        self.memories = []
+        self.anchor = None
+
+    @staticmethod
+    def _safe_crop(frame, bbox):
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = bbox
+        x1 = max(0, min(int(x1), w - 1))
+        y1 = max(0, min(int(y1), h - 1))
+        x2 = max(x1 + 1, min(int(x2), w))
+        y2 = max(y1 + 1, min(int(y2), h))
+        crop = frame[y1:y2, x1:x2]
+        return crop.copy() if crop.size else None
+
+    @staticmethod
+    def _normalize_template(img):
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+        gray = cv2.equalizeHist(gray)
+        return gray
+
+    def add(self, frame, bbox):
+        crop = self._safe_crop(frame, bbox)
+        if crop is None:
+            return
+        h, w = crop.shape[:2]
+        if h < 4 or w < 4:
+            return
+
+        if self.anchor is None:
+            self.anchor = crop.copy()
+
+        self.memories.append(crop)
+        if len(self.memories) > self.max_memories:
+            self.memories = self.memories[-self.max_memories:]
+
+    def _templates_for_search(self):
+        items = []
+        if self.anchor is not None:
+            items.append(("anchor", self.anchor, 1.00))
+
+        recent = self.memories[-12:]
+        total = max(1, len(recent))
+        for i, template in enumerate(recent):
+            recency = 0.80 + 0.20 * ((i + 1) / total)
+            items.append(("recent", template, recency))
+        return items
+
+    def search(self, frame, scales=(0.65, 0.8, 1.0, 1.2, 1.45), threshold=0.52):
+        """Search the whole frame for the target stored before lock loss."""
+        search_gray = self._normalize_template(frame)
+        fh, fw = search_gray.shape[:2]
+
+        best = None
+        all_hits = []
+
+        for source, template, memory_weight in self._templates_for_search():
+            base = self._normalize_template(template)
+
+            for scale in scales:
+                tw = max(5, int(base.shape[1] * scale))
+                th = max(5, int(base.shape[0] * scale))
+
+                if tw >= fw or th >= fh:
+                    continue
+
+                resized = cv2.resize(
+                    base,
+                    (tw, th),
+                    interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC,
+                )
+
+                response = cv2.matchTemplate(search_gray, resized, cv2.TM_CCOEFF_NORMED)
+                _, score, _, loc = cv2.minMaxLoc(response)
+
+                if not np.isfinite(score):
+                    continue
+
+                weighted_score = float(score) * float(memory_weight)
+                x, y = loc
+                bbox = (int(x), int(y), int(x + tw), int(y + th))
+                center = bbox_center(bbox)
+
+                hit = {
+                    "bbox": bbox,
+                    "center": center,
+                    "score": weighted_score,
+                    "raw_score": float(score),
+                    "source": source,
+                    "scale": float(scale),
+                }
+                all_hits.append(hit)
+
+                if best is None or hit["score"] > best["score"]:
+                    best = hit
+
+        if best is None:
+            return None
+
+        # Consensus check: true targets usually attract several memories to the same area.
+        diag = max(1.0, float(np.hypot(fw, fh)))
+        supporting = []
+        for hit in all_hits:
+            dist = np.hypot(
+                hit["center"][0] - best["center"][0],
+                hit["center"][1] - best["center"][1],
+            )
+            if dist <= 0.08 * diag and hit["raw_score"] >= 0.35:
+                supporting.append(hit["raw_score"])
+
+        consensus = float(np.mean(supporting)) if supporting else 0.0
+        support_bonus = min(0.12, 0.02 * len(supporting))
+        final_score = 0.75 * best["score"] + 0.25 * consensus + support_bonus
+        best["final_score"] = float(final_score)
+        best["support_count"] = len(supporting)
+
+        if final_score < threshold:
+            return None
+
+        return best
 
 
 def fit_frame(frame: np.ndarray, max_side: int = 960) -> np.ndarray:
@@ -76,81 +206,14 @@ def extract_rgb_frames(video_path, frames_dir, max_side=768, progress: ProgressC
     }
 
 
-def run_thera(runtime_script, weights_dir, rgb_frames_dir, thermal_frames_dir, palette="SUNNY", steps=8):
-    runtime_script = Path(runtime_script)
-    weights_dir = Path(weights_dir)
-    rgb_frames_dir = Path(rgb_frames_dir)
-    thermal_frames_dir = Path(thermal_frames_dir)
-
-    if thermal_frames_dir.exists():
-        shutil.rmtree(thermal_frames_dir)
-    thermal_frames_dir.mkdir(parents=True, exist_ok=True)
-
-    cache = weights_dir / "palettes" / f"{palette.upper()}.pt"
-    if not cache.exists():
-        raise FileNotFoundError(f"Thermal condition file not found: {cache}")
-
-    cmd = [
-        sys.executable,
-        str(runtime_script),
-        "--weights-dir", str(weights_dir),
-        "--rgb-dir", str(rgb_frames_dir),
-        "--output-dir", str(thermal_frames_dir),
-        "--reference-cache", str(cache),
-        "--num-steps", str(int(steps)),
-        "--device", "cuda",
-    ]
-    proc = subprocess.run(cmd, cwd=str(runtime_script.parent), text=True, capture_output=True)
-    if proc.stdout:
-        print(proc.stdout)
-    if proc.returncode != 0:
-        if proc.stderr:
-            print(proc.stderr)
-        raise RuntimeError(f"Thermal conversion failed.\n\n{proc.stderr or '(no stderr)'}")
-
-    produced = sorted(thermal_frames_dir.glob("frame_*.png"))
-    expected = sorted(rgb_frames_dir.glob("frame_*.png"))
-    if len(produced) != len(expected):
-        raise RuntimeError(f"Thermal output mismatch: expected {len(expected)}, got {len(produced)}")
-
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-
-def frames_to_video(frames_dir, output_path, fps):
-    frames = sorted(Path(frames_dir).glob("frame_*.png"))
-    if not frames:
-        raise RuntimeError(f"No frames found in {frames_dir}")
-
-    first = cv2.imread(str(frames[0]))
-    if first is None:
-        raise RuntimeError(f"Could not read {frames[0]}")
-    h, w = first.shape[:2]
-
-    output_path = Path(output_path)
-    writer = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*"mp4v"), float(fps), (w, h))
-    if not writer.isOpened():
-        raise RuntimeError("Could not create thermal video.")
-
-    for path in frames:
-        frame = cv2.imread(str(path))
-        if frame is None:
-            continue
-        if frame.shape[:2] != (h, w):
-            frame = cv2.resize(frame, (w, h), interpolation=cv2.INTER_AREA)
-        writer.write(frame)
-    writer.release()
-    return output_path
-
 
 def first_frame(frames_dir):
     paths = sorted(Path(frames_dir).glob("frame_*.png"))
     if not paths:
-        raise RuntimeError("No thermal frames found.")
+        raise RuntimeError("No RGB frames found.")
     frame = cv2.imread(str(paths[0]))
     if frame is None:
-        raise RuntimeError("Could not read first thermal frame.")
+        raise RuntimeError("Could not read first RGB frame.")
     return frame
 
 
@@ -280,14 +343,14 @@ def track_with_reacquisition(
     metrics_csv,
     sam_workdir,
     checkpoint,
-    algorithm="auto_ensemble",
     max_side=960,
-    recovery_threshold=0.38,
+    recovery_threshold=0.52,
+    memory_size=20,
     progress: ProgressCB = None,
 ):
     paths = sorted(Path(frames_dir).glob("frame_*.png"))
     if not paths:
-        raise RuntimeError("No thermal frames to track.")
+        raise RuntimeError("No RGB frames to track.")
 
     frames = []
     for path in paths:
@@ -298,7 +361,7 @@ def track_with_reacquisition(
         frames.append(frame)
 
     if not frames:
-        raise RuntimeError("No valid thermal frames.")
+        raise RuntimeError("No valid RGB frames.")
 
     h, w = frames[0].shape[:2]
     frames = [
@@ -327,7 +390,7 @@ def track_with_reacquisition(
     initial_area = 1
     was_locked = True
     current_loss_length = 0
-    engine = None
+    memory_bank = TargetMemoryBank(max_memories=memory_size)
     initial_bbox = None
     start = time.perf_counter()
 
@@ -349,7 +412,7 @@ def track_with_reacquisition(
 
             initial_area = max(1, int(mask.sum()))
             previous_area = initial_area
-            engine = ReacquisitionEngine(frames[0], initial_bbox)
+            memory_bank.add(frames[0], initial_bbox)
 
             for idx, frame in enumerate(frames):
                 recovered_this_frame = False
@@ -369,12 +432,15 @@ def track_with_reacquisition(
                     current_loss_length += 1
                     reacq_attempts += 1
 
-                    candidate = engine.reacquire(algorithm, idx, frames)
+                    candidate = memory_bank.search(
+                        frame,
+                        threshold=recovery_threshold,
+                    )
 
-                    if candidate is not None and candidate.score >= recovery_threshold:
+                    if candidate is not None:
                         release_predictor(predictor)
                         predictor = build_camera_predictor(sam_workdir, checkpoint)
-                        logits = initialize_predictor(predictor, frame, candidate.center)
+                        logits = initialize_predictor(predictor, frame, candidate["center"])
                         mask, confidence = mask_from_logits(logits, w, h)
                         good2, area2 = mask_quality(mask, confidence, None, initial_area)
                         bbox2 = bbox_from_mask(mask) if good2 else None
@@ -388,7 +454,7 @@ def track_with_reacquisition(
                             reacq_latencies.append(current_loss_length)
                             current_loss_length = 0
                             was_locked = True
-                            engine.update_lock(frame, bbox)
+                            memory_bank.add(frame, bbox)
 
                 if good and bbox is not None:
                     locked_frames += 1
@@ -396,7 +462,7 @@ def track_with_reacquisition(
                     previous_area = area
 
                     if not recovered_this_frame:
-                        engine.update_lock(frame, bbox)
+                        memory_bank.add(frame, bbox)
 
                     center = bbox_center(bbox)
                     if last_center is not None:
@@ -438,7 +504,7 @@ def track_with_reacquisition(
 
                 cv2.putText(
                     result,
-                    f"{ReacquisitionEngine.METHODS.get(algorithm, algorithm)} | conf {confidence:.2f}",
+                    f"ROLLING MEMORY SEARCH | conf {confidence:.2f}",
                     (18, h - 18),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.48,
@@ -471,8 +537,8 @@ def track_with_reacquisition(
 
     total = len(frames)
     metrics = {
-        "algorithm": ReacquisitionEngine.METHODS.get(algorithm, algorithm),
-        "algorithm_key": algorithm,
+        "algorithm": "Rolling Target Memory Search",
+        "algorithm_key": "rolling_target_memory",
         "total_frames": total,
         "locked_frames": locked_frames,
         "lock_retention_percent": round(100.0 * locked_frames / max(total, 1), 2),
