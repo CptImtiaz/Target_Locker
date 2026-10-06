@@ -129,7 +129,7 @@ def load_models(weights_dir: Path, device: str = "cuda"):
     unet = UNet2DConditionModel.from_pretrained(str(merged / "unet"))
     unet = convert_unet_to_8ch(unet)
 
-    state = torch.load(checkpoint_path, map_location="cpu")
+    state = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     if "unet" not in state:
         raise KeyError("TherA checkpoint does not contain 'unet' weights")
     unet.load_state_dict(state["unet"], strict=True)
@@ -181,11 +181,11 @@ def translate(
 ):
     rgb_latent = vae.encode(rgb_tensor).latent_dist.mode() * vae.config.scaling_factor
 
-    autocast = (
-        torch.autocast("cuda", dtype=torch.bfloat16)
-        if device.type == "cuda"
-        else nullcontext()
-    )
+    if device.type == "cuda":
+        amp_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        autocast = torch.autocast("cuda", dtype=amp_dtype)
+    else:
+        autocast = nullcontext()
 
     with autocast:
         cond = adapter(reference_hidden.to(device))
