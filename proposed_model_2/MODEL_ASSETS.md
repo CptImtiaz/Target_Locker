@@ -12,7 +12,7 @@ The app no longer clones the upstream TherA GitHub repository at runtime.
 
 ## TherA model assets
 
-The following trained assets are required from the TherA Hugging Face model repository and are downloaded into `/content/thera_weights` by the Colab notebook:
+The following trained assets are required from the your Hugging Face model repository `Imtiaz807/ThermalConversion` and are downloaded into `/content/thera_weights` by the Colab notebook:
 
 ```
 thera_weights/
