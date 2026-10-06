@@ -10,7 +10,7 @@ from IPython.display import display, Javascript
 from model3_tracker import (
     extract_rgb_frames,
     first_frame,
-    track_with_reacquisition,
+    run_samurai,
 )
 
 REPO = Path("/content/Target_Locker")
@@ -71,9 +71,9 @@ display(Javascript(r"""
   <div class="shell">
     <div class="head">
       <div>
-        <div class="kicker">PROPOSED MODEL 3 // ROLLING TARGET MEMORY</div>
-        <div class="title">RGB TARGET LOCK + MEMORY RECOVERY</div>
-        <div class="sub">RGB → SAM2 tracking → save target memory while locked → search saved target after loss.</div>
+        <div class="kicker">PROPOSED MODEL 3 // SAMURAI MOTION-AWARE MEMORY</div>
+        <div class="title">RGB TARGET LOCK // SAMURAI</div>
+        <div class="sub">RGB → SAMURAI → motion-aware memory selection → long-term target tracking.</div>
       </div>
       <div id="chip" class="chip">SYSTEM READY</div>
     </div>
@@ -84,7 +84,7 @@ display(Javascript(r"""
         <div id="empty" class="empty">
           <div style="font-size:46px">◉</div>
           <div style="font-size:18px;font-weight:900;color:#cbd5e1">LOAD RGB VIDEO</div>
-          <div>Select one target. Model 3 continuously remembers its appearance while lock is healthy.</div>
+          <div>Select one target. SAMURAI manages long-term motion-aware memory automatically.</div>
           <button id="upload" class="upload">UPLOAD RGB VIDEO</button>
         </div>
         <video id="video" controls playsinline style="display:none"></video>
@@ -109,20 +109,20 @@ display(Javascript(r"""
         <div class="card"><span>RGB RESOLUTION</span><b id="res">—</b></div>
         <div class="card"><span>FRAME RATE</span><b id="fps">—</b></div>
         <div class="card"><span>FRAMES</span><b id="frames">—</b></div>
-        <div class="card"><span>PIPELINE</span><b>THERA → SAM2</b></div>
+        <div class="card"><span>PIPELINE</span><b>RGB → SAMURAI</b></div>
       </div>
       <div id="progress" class="progress"><div id="bar"></div></div>
       <div id="metrics3" class="metrics3">
-        <div class="metric3"><span>LOCK RETENTION</span><b id="mRetention">—</b></div>
-        <div class="metric3"><span>LOSS EVENTS</span><b id="mLoss">—</b></div>
-        <div class="metric3"><span>RE-ACQ SUCCESS</span><b id="mRecovery">—</b></div>
-        <div class="metric3"><span>RECOVERY LATENCY</span><b id="mLatency">—</b></div>
-        <div class="metric3"><span>MEAN CONFIDENCE</span><b id="mConfidence">—</b></div>
+        <div class="metric3"><span>MASK PRESENCE</span><b id="mRetention">—</b></div>
+        <div class="metric3"><span>ZERO-MASK FRAMES</span><b id="mLoss">—</b></div>
+        <div class="metric3"><span>MEAN BBOX AREA</span><b id="mRecovery">—</b></div>
+        <div class="metric3"><span>FRAMES WITH MASK</span><b id="mLatency">—</b></div>
+        <div class="metric3"><span>DIAGNOSTIC MODE</span><b id="mConfidence">No-GT</b></div>
         <div class="metric3"><span>CENTER JUMP</span><b id="mJump">—</b></div>
         <div class="metric3"><span>TRACKING FPS</span><b id="mTrackFps">—</b></div>
-        <div class="metric3"><span>RECOVERY METHOD</span><b id="mAlgorithm">Rolling Memory</b></div>
+        <div class="metric3"><span>TRACKER</span><b id="mAlgorithm">SAMURAI</b></div>
       </div>
-      <div id="metricNote" class="metric-note">Proxy metrics show lock continuity and recovery behavior. Use dataset ground truth for formal AUC/precision.</div>
+      <div id="metricNote" class="metric-note">Diagnostics only. Without ground truth, these values are not tracking accuracy metrics.</div>
     </div>
   </div>`;
 
@@ -157,7 +157,7 @@ file_meta = output.eval_js(r"""
   A.newVideo.style.display = "inline-block";
   A.overlay.style.display = "flex";
   A.otitle.textContent = "UPLOADING RGB VIDEO";
-  A.osub.textContent = "Preparing RGB frames…";
+  A.osub.textContent = "Preparing RGB video for SAMURAI…";
   A.chip.textContent = "RGB INPUT";
   A.info.textContent = f.name.toUpperCase();
   A.progress.style.display = "block";
@@ -173,7 +173,7 @@ name = file_meta["name"]
 size = int(file_meta["size"])
 suffix = Path(name).suffix or ".mp4"
 
-job = Path(tempfile.mkdtemp(prefix="model3-memory-locker-", dir="/content"))
+job = Path(tempfile.mkdtemp(prefix="model3-samurai-", dir="/content"))
 video_path = job / f"input{suffix}"
 rgb_dir = job / "rgb_frames"
 final_video = job / "model3_memory_recovery.mp4"
@@ -215,7 +215,7 @@ def update_progress(stage, done, total):
         sub = f"Frame {done} / {total}"
     else:
         bar = 68 + int(pct * 0.28)
-        title = "TRACKING + SAVING TARGET MEMORY"
+        title = "SAMURAI TRACKING"
         sub = f"Frame {done} / {total}"
 
     output.eval_js(f"""(() => {{
@@ -237,7 +237,7 @@ output.eval_js(f"""(() => {{
   A.telemetry.style.display="grid";
   A.bar.style.width="25%";
   A.otitle.textContent="RGB TARGET LOCKER READY";
-  A.osub.textContent="Rolling target memory is ready.";
+  A.osub.textContent="SAMURAI is ready for target selection.";
   A.chip.textContent="RGB READY";
   return true;
 }})()""")
@@ -308,7 +308,7 @@ selection = output.eval_js(r"""
   A.overlay.style.display="flex";
   A.progress.style.display="block";
   A.otitle.textContent="MODEL 3 TRACKING + RECOVERY";
-  A.osub.textContent="Saving target appearance while locked; searching saved memories if lock is lost…";
+  A.osub.textContent="Running SAMURAI motion-aware long-term memory tracking…";
   A.chip.textContent="TRACKING";
   A.bar.style.width="68%";
 
@@ -319,31 +319,27 @@ selection = output.eval_js(r"""
 tx = int(float(selection["x"]) * rgb0.shape[1] / max(float(selection["cw"]), 1))
 ty = int(float(selection["y"]) * rgb0.shape[0] / max(float(selection["ch"]), 1))
 
-final_video, model3_metrics = track_with_reacquisition(
-    rgb_dir,
-    (tx, ty),
-    meta["fps"],
-    final_video,
-    metrics_json,
-    metrics_csv,
-    SAM_WORKDIR,
-    SAM_CKPT,
-    max_side=960,
-    progress=update_progress,
+final_video, model3_metrics = run_samurai(
+    video_path=video_path,
+    target_point=(tx, ty),
+    output_path=final_video,
+    metrics_json=metrics_json,
+    samurai_root=Path("/content/samurai"),
+    checkpoint=SAM_CKPT,
 )
 
 output.eval_js(f"""(() => {{
   const A=window.TL2;
   A.metrics3.style.display="grid";
   A.metricNote.style.display="block";
-  A.mRetention.textContent={json.dumps(str(model3_metrics["lock_retention_percent"]) + "%")};
-  A.mLoss.textContent={json.dumps(str(model3_metrics["loss_events"]))};
-  A.mRecovery.textContent={json.dumps(str(model3_metrics["reacquisition_success_percent"]) + "%")};
-  A.mLatency.textContent={json.dumps(str(model3_metrics["mean_reacquisition_latency_frames"]) + " frames")};
-  A.mConfidence.textContent={json.dumps(str(model3_metrics["mean_sam_confidence"]))};
+  A.mRetention.textContent={json.dumps(str(model3_metrics["mask_presence_percent"]) + "%")};
+  A.mLoss.textContent={json.dumps(str(model3_metrics["zero_mask_frames"]))};
+  A.mRecovery.textContent={json.dumps(str(model3_metrics["mean_bbox_area"]))};
+  A.mLatency.textContent={json.dumps(str(model3_metrics["frames_with_mask"]))};
+  A.mConfidence.textContent="No-GT diagnostics";
   A.mJump.textContent={json.dumps(str(model3_metrics["mean_normalized_center_jump"]))};
   A.mTrackFps.textContent={json.dumps(str(model3_metrics["tracking_fps"]))};
-  A.mAlgorithm.textContent="Rolling Target Memory";
+  A.mAlgorithm.textContent="SAMURAI";
   return true;
 }})()""")
 
@@ -375,5 +371,5 @@ else:
       return true;
     })()""")
 
-print("✅ Proposed Model 3 complete")
+print("✅ Proposed Model 3 SAMURAI complete")
 print("Tracked output:", final_video)
