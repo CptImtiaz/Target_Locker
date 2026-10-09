@@ -21,6 +21,7 @@ from mask_geometry import geometry, validate as validate_geometry
 from object_memory import ObjectMemory
 from camera_motion import CameraMotion
 from distractor_memory import DistractorMemory
+from adaptive_fusion import AdaptiveFusion
 
 def bbox_from_mask(mask):
     ys,xs=np.where(mask)
@@ -134,11 +135,13 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
     rows=[]
     stats=dict(loss_events=0,global_search_frames=0,global_detector_calls=0,
                confirmed_reacquisitions=0,rejected_reacquisitions=0,
+               uncertain_search_rejections=0,
                identity_checks=0,locked_frames=0,geometry_rejections=0)
     identity_scores=[]
     memory=ObjectMemory(fps)
     camera=CameraMotion()
     distractors=DistractorMemory()
+    fusion=AdaptiveFusion(min_appearance=min_identity)
     start=time.perf_counter()
     search_candidates=[]
     gate=RecoveryGate(min_identity=min_identity,min_margin=min_margin,confirmations=2)
@@ -222,10 +225,16 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
                 mask=np.zeros((h,w),dtype=bool)
                 box=None
                 if (i%search_every==0) or stats["global_search_frames"]==1:
-                    candidates=memory.rerank(frame,redetector.search(frame),i)
-                    candidates=distractors.penalize(frame,candidates,vlm,frame_index=i)
+                    raw_candidates=redetector.search(frame)
+                    ranked=distractors.penalize(frame,raw_candidates,vlm,frame_index=i)
+                    candidates,decision=fusion.evaluate(frame,ranked,memory,i,camera.confidence)
                     stats["global_detector_calls"]+=1
-                    found=gate.consider(candidates)
+                    if decision.accepted:
+                        found=gate.consider(candidates)
+                    else:
+                        stats["uncertain_search_rejections"]+=1
+                        gate.reset()
+                        found=None
                     if found is not None:
                         # A confirmed candidate still needs to initialize SAM2 and
                         # pass an independent mask + target-image verification.
@@ -308,6 +317,8 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
         "universal_memory":memory.summary(),
         "camera_motion":camera.summary(),
         "distractor_memory":distractors.summary(),
+        "adaptive_fusion":fusion.summary(),
+        "uncertain_search_rejections":stats["uncertain_search_rejections"],
     }
     write_diagnostics(metrics_json,metrics_csv,summary,rows)
     return out_path,summary
