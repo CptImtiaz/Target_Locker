@@ -50,3 +50,21 @@ CSV/JSON counts, loss events, and recovery counts are **no-GT diagnostics**. The
 - SigLIP 2: https://huggingface.co/google/siglip2-base-patch16-224
 
 This project is not an implementation of MSRTrack/IGR or official SAMURAI; they are independent research baselines.
+
+
+## Shadow / mask-geometry validation
+
+Model 4 includes `mask_geometry.py`, a conservative geometry guard on SAM2
+masks. It compares mask area, bounding-box elongation, disproportionate axis
+growth, and mask fill to the **original selected-target mask** and the last
+trusted mask. Masks that appear to expand into a person's long shadow are
+rejected, and the existing Grounding DINO + SigLIP 2 reacquisition mechanism
+takes over. Reinitialized SAM2 masks are checked with the same baseline.
+
+This is a **mask rejection** strategy, not automatic person-shadow separation.
+It works best if the first selected frame's mask excludes the shadow.
+Perspective/scale change, pose change, and extremely small targets can also
+trigger rejection; thresholds are experimental and need annotated evaluation.
+
+The diagnostic JSON reports `geometry_rejections`. Run the geometry tests
+with `python -m unittest discover -s tests -v`.

@@ -17,6 +17,7 @@ from video_io import extract_rgb_frames, first_frame
 from vlm_identity import SigLIPIdentity
 from reacquisition import GlobalReacquirer
 from confidence_policy import RecoveryGate, overlap
+from mask_geometry import geometry, validate as validate_geometry
 
 def bbox_from_mask(mask):
     ys,xs=np.where(mask)
@@ -130,7 +131,7 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
     rows=[]
     stats=dict(loss_events=0,global_search_frames=0,global_detector_calls=0,
                confirmed_reacquisitions=0,rejected_reacquisitions=0,
-               identity_checks=0,locked_frames=0)
+               identity_checks=0,locked_frames=0,geometry_rejections=0)
     identity_scores=[]
     start=time.perf_counter()
     search_candidates=[]
@@ -138,6 +139,8 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
     last_bbox=None
     previous_area=None
     initial_area=1
+    reference_geometry=None
+    last_trusted_geometry=None
     state="LOCKED"
     first_mask=None
     first_quality=0.
@@ -154,6 +157,8 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
             if first_bbox is None or not valid_mask(first_mask,None,1):
                 raise RuntimeError("SAM2 could not segment the selected target. Choose another point.")
             initial_area=int(first_mask.sum())
+            reference_geometry=geometry(first_mask)
+            last_trusted_geometry=reference_geometry
             previous_area=initial_area
             last_bbox=first_bbox
 
@@ -177,7 +182,10 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
                 with torch.inference_mode(),torch.autocast("cuda",dtype=amp):
                     logits=session.track(frame)
                     mask,sam_score=mask_decode(logits,(h,w))
-                if valid_mask(mask,previous_area,initial_area):
+                geometry_ok,geometry_reason=validate_geometry(mask,reference_geometry,last_trusted_geometry)
+                if not geometry_ok:
+                    stats['geometry_rejections']+=1
+                if geometry_ok and valid_mask(mask,previous_area,initial_area):
                     box=bbox_from_mask(mask)
                 if box is not None and (i%verify_every==0):
                     identity_score=vlm.compare(frame,[box])[0]
@@ -194,6 +202,7 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
                     session=None
                 else:
                     previous_area=int(mask.sum())
+                    last_trusted_geometry=geometry(mask)
                     last_bbox=box
                     if identity_score is not None:
                         vlm.update_trusted(frame,box,identity_score)
@@ -213,7 +222,10 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
                             logits=proposed.initialize(frame,bbox=found.bbox)
                             new_mask,new_quality=mask_decode(logits,(h,w))
                         new_box=bbox_from_mask(new_mask)
-                        okay=(new_box is not None and
+                        new_geometry_ok,_=validate_geometry(new_mask,reference_geometry)
+                        if not new_geometry_ok:
+                            stats['geometry_rejections']+=1
+                        okay=(new_box is not None and new_geometry_ok and
                               valid_mask(new_mask,None,initial_area) and
                               overlap(new_box,found.bbox)>=.10)
                         new_similarity=vlm.compare(frame,[new_box])[0] if okay else -1.
@@ -226,6 +238,7 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
                             mask=new_mask;sam_score=new_quality;box=new_box
                             identity_score=new_similarity
                             previous_area=int(mask.sum())
+                            last_trusted_geometry=geometry(mask)
                             last_bbox=new_box
                             gate.reset()
                         else:
@@ -265,6 +278,7 @@ def track_with_reacquisition(frames_dir,target_point,fps,output_path,
         "target_label":stats["target_label"],
         "total_frames":len(rows),
         "loss_events":stats["loss_events"],
+        "geometry_rejections":stats["geometry_rejections"],
         "global_search_frames":stats["global_search_frames"],
         "global_detector_calls":stats["global_detector_calls"],
         "confirmed_reacquisitions":stats["confirmed_reacquisitions"],
