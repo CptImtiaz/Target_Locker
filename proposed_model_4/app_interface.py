@@ -5,7 +5,7 @@ from pathlib import Path
 
 import cv2
 from google.colab import output
-from IPython.display import display, Javascript
+from IPython.display import display, Javascript, FileLink
 
 from video_io import extract_rgb_frames, first_frame
 from model4_tracker import track_with_reacquisition
@@ -305,7 +305,7 @@ selection = output.eval_js(r"""
   A.overlay.style.display="flex";
   A.progress.style.display="block";
   A.otitle.textContent="MODEL 4 TRACKING + RECOVERY";
-  A.osub.textContent="Running GROUNDING DINO + SIGLIP 2 motion-aware long-term memory tracking…";
+  A.osub.textContent="Running SAM2 local tracking and VLM-verified global reacquisition…";
   A.chip.textContent="TRACKING";
   A.bar.style.width="68%";
 
@@ -374,4 +374,4 @@ else:
     })()""")
 
 print("✅ Proposed Model 4 GROUNDING DINO + SIGLIP 2 complete")
-print("Tracked output:", final_video)
+print("Tracked output:", final_video)\nprint("Diagnostics JSON:", metrics_json)\nprint("Per-frame CSV:", metrics_csv)\ndisplay(FileLink(str(final_video)))\ndisplay(FileLink(str(metrics_json)))\ndisplay(FileLink(str(metrics_csv)))
