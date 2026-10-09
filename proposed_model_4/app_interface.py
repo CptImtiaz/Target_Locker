@@ -374,4 +374,9 @@ else:
     })()""")
 
 print("✅ Proposed Model 4 GROUNDING DINO + SIGLIP 2 complete")
-print("Tracked output:", final_video)\nprint("Diagnostics JSON:", metrics_json)\nprint("Per-frame CSV:", metrics_csv)\ndisplay(FileLink(str(final_video)))\ndisplay(FileLink(str(metrics_json)))\ndisplay(FileLink(str(metrics_csv)))
+print("Tracked output:", final_video)
+print("Diagnostics JSON:", metrics_json)
+print("Per-frame CSV:", metrics_csv)
+display(FileLink(str(final_video)))
+display(FileLink(str(metrics_json)))
+display(FileLink(str(metrics_csv)))
