@@ -3,7 +3,7 @@ import cv2
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from transformers import Siglip2Model,AutoProcessor
+from transformers import SiglipModel,AutoProcessor
 
 CATEGORIES=("car","truck","bus","motorcycle","bicycle","person","dog","cat",
             "bird","boat","airplane","drone","tractor","animal","vehicle","object")
@@ -21,7 +21,7 @@ class SigLIPIdentity:
         self.device=torch.device(device)
         dtype=torch.float16 if self.device.type=="cuda" else torch.float32
         self.processor=AutoProcessor.from_pretrained(model_id)
-        self.model=Siglip2Model.from_pretrained(model_id,torch_dtype=dtype).eval().to(self.device)
+        self.model=SiglipModel.from_pretrained(model_id,torch_dtype=dtype).eval().to(self.device)
         self.anchor=None
         self.trusted=[]
         self.selected_label=None
