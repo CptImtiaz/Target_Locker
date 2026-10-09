@@ -7,16 +7,13 @@ import cv2
 from google.colab import output
 from IPython.display import display, Javascript
 
-from model4_tracker import (
-    extract_rgb_frames,
-    first_frame,
-    track_with_semantic_reacquisition,
-)
+from video_io import extract_rgb_frames, first_frame
+from model4_tracker import track_with_reacquisition
 
 REPO = Path("/content/Target_Locker")
 SAM_CKPT = Path("/content/sam2.1_hiera_tiny.pt")
 
-MAX_SIDE = 768
+MAX_SIDE = 960
 
 display(Javascript(r"""
 (() => {
@@ -70,9 +67,9 @@ display(Javascript(r"""
   <div class="shell">
     <div class="head">
       <div>
-        <div class="kicker">PROPOSED MODEL 4 // SIGLIP 2 + ADAPTIVE MOTION MEMORY</div>
-        <div class="title">RGB TARGET LOCK // SEMANTIC MEMORY</div>
-        <div class="sub">RGB → SAM2 → SigLIP 2 identity verification → motion-aware re-detection → re-lock.</div>
+        <div class="kicker">PROPOSED MODEL 4 // GROUNDING DINO + SIGLIP 2 REACQUISITION</div>
+        <div class="title">RGB TARGET LOCK // VLM REACQUISITION</div>
+        <div class="sub">RGB → SAM2 tracking → Grounding DINO global search → SigLIP 2 identity check → confirmed re-lock.</div>
       </div>
       <div id="chip" class="chip">SYSTEM READY</div>
     </div>
@@ -104,22 +101,23 @@ display(Javascript(r"""
         <div id="info" class="info">NO VIDEO LOADED</div>
       </div>
 
+      <div style="margin-top:12px;color:#94a3b8;font-size:12px">Optional target type / description (improves global detection): <input id="targetDesc" placeholder="e.g. car, person, drone — leave blank for SigLIP 2 auto-category" style="width:100%;margin-top:6px;border:1px solid #334155;background:#111827;color:white;padding:10px 12px;border-radius:10px"></div>
       <div id="telemetry" class="telemetry" style="display:none">
         <div class="card"><span>RGB RESOLUTION</span><b id="res">—</b></div>
         <div class="card"><span>FRAME RATE</span><b id="fps">—</b></div>
         <div class="card"><span>FRAMES</span><b id="frames">—</b></div>
-        <div class="card"><span>PIPELINE</span><b>SAM2 + SIGLIP2 + MEMORY</b></div>
+        <div class="card"><span>PIPELINE</span><b>SAM2 → GROUNDING DINO + SIGLIP 2</b></div>
       </div>
       <div id="progress" class="progress"><div id="bar"></div></div>
       <div id="metrics3" class="metrics3">
         <div class="metric3"><span>LOSS EVENTS</span><b id="mRetention">—</b></div>
         <div class="metric3"><span>GLOBAL SEARCH FRAMES</span><b id="mLoss">—</b></div>
         <div class="metric3"><span>CONFIRMED RE-ACQ</span><b id="mRecovery">—</b></div>
-        <div class="metric3"><span>MEAN GLOBAL SCORE</span><b id="mLatency">—</b></div>
-        <div class="metric3"><span>IDENTITY VERIFIER</span><b id="mConfidence">—</b></div>
-        <div class="metric3"><span>CENTER JUMP</span><b id="mJump">—</b></div>
-        <div class="metric3"><span>TRACKING FPS</span><b id="mTrackFps">—</b></div>
-        <div class="metric3"><span>TRACKER</span><b id="mAlgorithm">SAM2 + SigLIP 2</b></div>
+        <div class="metric3"><span>REJECTED RELOCKS</span><b id="mLatency">—</b></div>
+        <div class="metric3"><span>MEAN VLM SIMILARITY</span><b id="mConfidence">—</b></div>
+        <div class="metric3"><span>LOCKED FRAME FRACTION</span><b id="mJump">—</b></div>
+        <div class="metric3"><span>PROCESSING FPS</span><b id="mTrackFps">—</b></div>
+        <div class="metric3"><span>TRACKER</span><b id="mAlgorithm">SAM2 + VLM</b></div>
       </div>
       <div id="metricNote" class="metric-note">Diagnostics only. Without ground truth, these values are not tracking accuracy metrics.</div>
     </div>
@@ -156,7 +154,7 @@ file_meta = output.eval_js(r"""
   A.newVideo.style.display = "inline-block";
   A.overlay.style.display = "flex";
   A.otitle.textContent = "UPLOADING RGB VIDEO";
-  A.osub.textContent = "Preparing RGB video for SEMANTIC-MOTION RE-DETECTOR…";
+  A.osub.textContent = "Preparing RGB video for GROUNDING DINO + SIGLIP 2…";
   A.chip.textContent = "RGB INPUT";
   A.info.textContent = f.name.toUpperCase();
   A.progress.style.display = "block";
@@ -172,12 +170,12 @@ name = file_meta["name"]
 size = int(file_meta["size"])
 suffix = Path(name).suffix or ".mp4"
 
-job = Path(tempfile.mkdtemp(prefix="model4-semantic-motion-", dir="/content"))
+job = Path(tempfile.mkdtemp(prefix="model4-reacq-", dir="/content"))
 video_path = job / f"input{suffix}"
 rgb_dir = job / "rgb_frames"
-final_video = job / "model4_semantic_motion.mp4"
-metrics_json = job / "metrics_semantic_motion.json"
-metrics_csv = job / "metrics_semantic_motion.csv"
+final_video = job / "model4_grounded_reacquisition.mp4"
+metrics_json = job / "metrics_grounded_reacquisition.json"
+metrics_csv = job / "metrics_grounded_reacquisition.csv"
 
 CHUNK = 512 * 1024
 chunks = (size + CHUNK - 1) // CHUNK
@@ -214,7 +212,7 @@ def update_progress(stage, done, total):
         sub = f"Frame {done} / {total}"
     else:
         bar = 68 + int(pct * 0.28)
-        title = "SEMANTIC-MOTION RE-DETECTOR TRACKING"
+        title = "GROUNDING DINO + SIGLIP 2 TRACKING"
         sub = f"Frame {done} / {total}"
 
     output.eval_js(f"""(() => {{
@@ -236,7 +234,7 @@ output.eval_js(f"""(() => {{
   A.telemetry.style.display="grid";
   A.bar.style.width="25%";
   A.otitle.textContent="RGB TARGET LOCKER READY";
-  A.osub.textContent="SEMANTIC-MOTION RE-DETECTOR is ready for target selection.";
+  A.osub.textContent="GROUNDING DINO + SIGLIP 2 is ready for target selection.";
   A.chip.textContent="RGB READY";
   return true;
 }})()""")
@@ -307,18 +305,18 @@ selection = output.eval_js(r"""
   A.overlay.style.display="flex";
   A.progress.style.display="block";
   A.otitle.textContent="MODEL 4 TRACKING + RECOVERY";
-  A.osub.textContent="Running SEMANTIC-MOTION RE-DETECTOR motion-aware long-term memory tracking…";
+  A.osub.textContent="Running GROUNDING DINO + SIGLIP 2 motion-aware long-term memory tracking…";
   A.chip.textContent="TRACKING";
   A.bar.style.width="68%";
 
-  return click;
+  return {...click,target_description:(A.root.querySelector("#targetDesc")?.value || "").trim()};
 })()
 """)
 
 tx_preview = int(float(selection["x"]) * rgb0.shape[1] / max(float(selection["cw"]), 1))
 ty_preview = int(float(selection["y"]) * rgb0.shape[0] / max(float(selection["ch"]), 1))
 
-final_video, model4_metrics = track_with_semantic_reacquisition(
+final_video, model4_metrics = track_with_reacquisition(
     rgb_dir,
     (tx_preview, ty_preview),
     meta["fps"],
@@ -328,6 +326,7 @@ final_video, model4_metrics = track_with_semantic_reacquisition(
     REPO / "SAM2_streaming-main",
     SAM_CKPT,
     max_side=960,
+    target_description=selection.get("target_description", ""),
     progress=update_progress,
 )
 
@@ -338,11 +337,11 @@ output.eval_js(f"""(() => {{
   A.mRetention.textContent={json.dumps(str(model4_metrics["loss_events"]))};
   A.mLoss.textContent={json.dumps(str(model4_metrics["global_search_frames"]))};
   A.mRecovery.textContent={json.dumps(str(model4_metrics["confirmed_reacquisitions"]))};
-  A.mLatency.textContent={json.dumps(str(model4_metrics["mean_global_best_score"]))};
-  A.mConfidence.textContent={json.dumps(str(model4_metrics["mean_identity_verifier_score"]))};
-  A.mJump.textContent={json.dumps(str(model4_metrics["mean_normalized_center_jump"]))};
-  A.mTrackFps.textContent={json.dumps(str(model4_metrics["tracking_fps"]))};
-  A.mAlgorithm.textContent="SAM2 + SigLIP 2 + Motion";
+  A.mLatency.textContent={json.dumps(str(model4_metrics["rejected_reacquisitions"]))};
+  A.mConfidence.textContent={json.dumps(str(model4_metrics["mean_vlm_similarity"]))};
+  A.mJump.textContent={json.dumps(str(model4_metrics["locked_frame_fraction"]))};
+  A.mTrackFps.textContent={json.dumps(str(model4_metrics["processing_fps"]))};
+  A.mAlgorithm.textContent="SAM2 + Grounding DINO + SigLIP 2";
   return true;
 }})()""")
 
@@ -374,5 +373,5 @@ else:
       return true;
     })()""")
 
-print("✅ Proposed Model 4 SEMANTIC-MOTION RE-DETECTOR complete")
+print("✅ Proposed Model 4 GROUNDING DINO + SIGLIP 2 complete")
 print("Tracked output:", final_video)

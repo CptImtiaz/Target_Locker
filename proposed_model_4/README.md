@@ -1,26 +1,52 @@
-# Proposed Model 4 — VLM-Guided Persistent Single-Object Tracking
+# Proposed Model 4 — SAM2 + Global Re-detection + SigLIP 2
 
-## Goal
-Keep the Model 3 Colab upload → first-frame mouse selection → playback interface while adding SigLIP 2 identity verification and soft motion-aware memory for re-acquisition.
+This is a **fresh replacement** of the previous Model 4 prototype, preserving its Colab video upload → first-frame click → LOCK & TRACK → preview/MP4/diagnostics interface. It does **not** use the previous ResNet-18 feature-map re-detector or the handmade velocity/motion-memory heuristic.
 
-## Modules
-- `app_interface.py`: same Model 3 browser interface (video upload, mouse-click lock, metrics and output).
-- `model4_tracker.py`: SAM2.1 Tiny RGB tracker and target-loss/re-acquisition state machine (adapted from Model 3).
-- `global_redetector.py`: full-frame ResNet-18 candidate proposals from Model 3.
-- `semantic_redetector.py`: SigLIP 2 visual-language image embeddings, trusted exemplar bank and velocity-based soft motion prior.
-- `App Interface.ipynb`: one-click Colab setup and run.
-- `requirements.txt`: dependencies.
+## Architecture
 
-## Method and limitations
-SAM2 supplies mask tracking, ResNet-18 scans the full frame when a target is lost, SigLIP 2 compares initial target and candidate images, and a motion prior reranks proposals. Two-frame confirmation precedes SAM2 bounding-box reinitialization. The initial target anchor remains immutable.
+1. **SAM2.1 Tiny** from this repository's `SAM2_streaming-main`: tracks and segments the single clicked RGB target.
+2. **Loss detection**: rejects missing, implausibly sized, or low-SigLIP-similarity masks; stops trusting the old SAM2 state.
+3. **Grounding DINO Tiny**: searches the complete video frame for candidate objects of the selected category when lost.
+4. **SigLIP 2 Base (224)**: stores immutable initial target image embedding, optionally a few high-trust examples; compares all candidate crops to original target.
+5. **RecoveryGate**: rejects low target similarity and ambiguous near-ties, requires the same candidate on two separate *search frames*. Reinitializes SAM2 from bounding box only after confirmation plus mask/image verification. Otherwise remains SEARCHING (unknown identity).
+6. **Output**: annotated MP4, per-frame CSV, JSON diagnostics.
 
-**Important:** This is a SAMURAI-inspired *external* motion-aware memory implementation. It does NOT execute the upstream SAMURAI algorithm or load SAMURAI weights. The proposed fusion is a prototype; confidence thresholds are heuristics, not calibrated probabilities. SigLIP similarity cannot uniquely establish object identity, especially between near-identical objects. ResNet proposal quality bounds full-frame recovery. This is RGB-only, with no thermal conversion. It is not real-time on a T4 and has not been GPU-validated in this change.
+### Why two models for reacquisition?
+Grounding DINO is an open-vocabulary **detector**, not an individual identity matcher. SigLIP 2 is a **vision-language encoder** used to match candidates to a target reference, not a global detector. This design uses them together.
 
-## Run
-Open `App Interface.ipynb` from the feature branch in Colab, select GPU, run first cell (dependencies and SAM2 checkpoint), then second cell (app). First frame appears for point selection. Upload an RGB MP4, select target, press LOCK & TRACK.
+### Limitations
+- The detector can miss very small UAV targets; reducing video resolution makes this worse. Increase `MAX_SIDE` if GPU permits.
+- SigLIP 2 image similarity is **not unique-identity recognition**. Visually identical cars emerging from a tunnel cannot necessarily be distinguished. The UNKNOWN/SEARCHING state is intentional.
+- Automatic class inference is based on a restricted class list. Type a target category in the optional field (e.g. `car`, `person`, `drone`) if automatic classification is incorrect.
+- Similarities and `min_identity=.68`/`min_margin=.035` thresholds are **heuristics, not calibrated probabilities**. Validate and tune on separate annotated development videos.
+- Full-frame detection every two lost frames and VLM scoring increase latency. No real-time or T4 GPU performance claims are made.
+- Supports RGB video. No thermal conversion, official SAMURAI, or motion prediction is used.
+- The code was structurally reviewed; Colab GPU inference and video benchmark performance are **not yet verified**.
+
+## Run in Colab
+
+Open `App Interface.ipynb` in Google Colab from branch `feature/proposed-model-4-vlm-memory`.
+Choose **Runtime > Change runtime type > GPU**, then execute cells in order. First cell clones/updates the branch, installs requirements and downloads SAM2 Tiny. Second cell runs offline RecoveryGate unit tests. Third cell launches upload-and-click app. Choose the target with your mouse. Optionally type the object category to improve global detection.
+
+**Downloads:** SAM2 Tiny checkpoint, Hugging Face `IDEA-Research/grounding-dino-tiny`, and `google/siglip2-base-patch16-224` are separate pretrained models.
+
+## Files
+- `App Interface.ipynb`: GPU notebook and app launcher
+- `app_interface.py`: Model-3-style browser UI with optional target type input
+- `model4_tracker.py`: SAM2 local tracking / loss / reinitialization / MP4/metrics
+- `reacquisition.py`: Grounding DINO detection + SigLIP ranking
+- `vlm_identity.py`: SigLIP 2 image and text embeddings + target gallery
+- `confidence_policy.py`: conservative uncertainty and temporal matching policy
+- `video_io.py`: RGB video preparation
+- `tests/test_confidence_policy.py`: CPU-only tests
+- `requirements.txt`: runtime dependencies
 
 ## Evaluation
-Exported JSON/CSV are **no-ground-truth diagnostics**, not tracking accuracy. Validate separately with annotated UAV tracking benchmarks (Success AUC, normalized precision, reacquisition success/false recovery, GPU latency). Compare SAM2, Model 3, proposed Model 4, and official SAMURAI as an independent baseline.
+CSV/JSON counts, loss events, and recovery counts are **no-GT diagnostics**. They are not ground-truth success, precision, or re-ID accuracy. For quantitative research, evaluate re-detection recall, true/false reacquisition, temporal recovery latency, unknown rejection rate, Success AUC and FPS against annotated UAV123/UAV20L or custom tunnel sequences.
 
-Upstream research: https://github.com/yangchris11/samurai
-SigLIP 2: https://huggingface.co/google/siglip2-base-patch16-512
+## Pretrained model sources
+- SAM2: https://github.com/facebookresearch/sam2
+- Grounding DINO: https://huggingface.co/IDEA-Research/grounding-dino-tiny
+- SigLIP 2: https://huggingface.co/google/siglip2-base-patch16-224
+
+This project is not an implementation of MSRTrack/IGR or official SAMURAI; they are independent research baselines.
